@@ -53,12 +53,18 @@ USB ni les vitesses de lien (WebUSB ne le permet pas), d'où ce découpage.
 ## Utilisation
 
 **Windows** : téléchargez `treasure-cables.exe` (artefact `treasure-cables-windows-x64`
-de la CI GitHub Actions) et double-cliquez dessus, ou lancez-le dans un terminal :
+de la CI GitHub Actions) et double-cliquez dessus. Le diagnostic s'affiche avec
+un menu :
 
-```powershell
-.\treasure-cables.exe                        # diagnostic de la machine
-.\treasure-cables.exe --json > rapport.json  # rapport à partager
 ```
+[R] Rafraîchir   [E] Exporter le rapport (JSON)   [Q] Quitter
+```
+
+- **Rafraîchir** (ou F5) : relance l'analyse, pratique pour comparer deux câbles.
+- **Exporter** : enregistre `rapport-treasure-cables-AAAAMMJJ-HHMMSS.json` (sans
+  numéros de série) à côté de l'exécutable, à partager ou à ouvrir sur le site.
+
+Pour les scripts, les options restent disponibles (`--json`, `--input`, `--help`).
 
 **Depuis les sources** :
 

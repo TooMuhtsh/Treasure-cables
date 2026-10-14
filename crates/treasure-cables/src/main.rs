@@ -1,5 +1,8 @@
 //! Version portable de Treasure Cables (ligne de commande).
 
+mod menu;
+
+use std::io::IsTerminal;
 use std::process::ExitCode;
 
 use treasure_audit::{Confidence, Finding, Severity};
@@ -9,6 +12,9 @@ const USAGE: &str = "\
 Treasure Cables : audit des ports, câbles et appareils USB
 
 Usage : treasure-cables [options]
+
+Sans option, dans une console : diagnostic et menu interactif
+(rafraîchir, exporter le rapport JSON, quitter).
 
 Options :
   --json             Écrit le rapport JSON (à partager ou à ouvrir sur le site)
@@ -61,15 +67,30 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    let options = treasure_collect::Options {
+        include_serials: args.include_serials,
+    };
+
+    // Sans option, dans une console : menu interactif (cas du double-clic).
+    let interactive = !args.json
+        && args.input.is_none()
+        && std::io::stdin().is_terminal()
+        && std::io::stdout().is_terminal();
+    if interactive {
+        return match menu::run(&options) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("Erreur : {e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
 
     let report = match &args.input {
         Some(path) => std::fs::read_to_string(path)
             .map_err(|e| e.to_string())
             .and_then(|s| serde_json::from_str::<Report>(&s).map_err(|e| e.to_string())),
-        None => treasure_collect::collect(&treasure_collect::Options {
-            include_serials: args.include_serials,
-        })
-        .map_err(|e| e.to_string()),
+        None => treasure_collect::collect(&options).map_err(|e| e.to_string()),
     };
     let report = match report {
         Ok(r) => r,
@@ -80,46 +101,32 @@ fn main() -> ExitCode {
     };
 
     if args.json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&report).expect("rapport sérialisable")
-        );
+        println!("{}", to_json(&report));
         return ExitCode::SUCCESS;
     }
-
-    print_tree(&report);
-    print_displays(&report);
-    print_findings(&treasure_audit::audit(&report));
-    for note in &report.notes {
-        println!("ℹ {note}");
-    }
-    pause_if_double_clicked();
+    print_report(&report);
     ExitCode::SUCCESS
 }
 
-/// Lancé par double-clic, Windows ouvre une console qui se refermerait
-/// aussitôt : on attend que l'utilisateur ait lu.
-fn pause_if_double_clicked() {
-    #[cfg(windows)]
-    {
-        let mut processes = [0u32; 2];
-        // SAFETY: tampon de deux entrées, taille passée.
-        let count = unsafe {
-            windows_sys::Win32::System::Console::GetConsoleProcessList(processes.as_mut_ptr(), 2)
-        };
-        if count == 1 {
-            println!("\nAppuyez sur Entrée pour fermer.");
-            let _ = std::io::stdin().read_line(&mut String::new());
-        }
-    }
+fn to_json(report: &Report) -> String {
+    serde_json::to_string_pretty(report).expect("rapport sérialisable")
 }
 
-fn print_tree(report: &Report) {
+fn print_report(report: &Report) {
     println!(
         "Treasure Cables {} ({})\n",
         env!("CARGO_PKG_VERSION"),
         env!("TREASURE_BUILD")
     );
+    print_tree(report);
+    print_displays(report);
+    print_findings(&treasure_audit::audit(report));
+    for note in &report.notes {
+        println!("ℹ {note}");
+    }
+}
+
+fn print_tree(report: &Report) {
     println!(
         "Appareils USB ({})",
         report.host.os_version.as_deref().unwrap_or(&report.host.os)
