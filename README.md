@@ -31,13 +31,15 @@ appareils, et le traduit en diagnostic clair :
 
 ```
 crates/
-├── treasure-model    modèle de données + format de rapport   ┐ sans dépendance au système,
-├── treasure-audit    règles de diagnostic                    ┘ compilent en WebAssembly
+├── treasure-model    modèle de données + format de rapport   ┐
+├── treasure-audit    règles de diagnostic, test de câble     │ sans dépendance au système,
+├── treasure-present  présentation pour les interfaces        ┘ compilent en WebAssembly
 ├── treasure-collect  collecte : Linux (sysfs, typec), Windows (IOCTL des hubs)
-└── treasure-cables   version portable (ligne de commande)
+└── treasure-cables   version portable : fenêtre (serveur local), console, ligne de commande
+web/                  interface Svelte 5 + Material Web (fenêtre de l'application et futur site)
 ```
 
-Le futur site web réutilisera `treasure-model` et `treasure-audit` compilés en
+Le futur site web réutilisera la même interface (`web/`) et `treasure-present` compilé en
 WebAssembly : il pourra lire un rapport produit par la version portable,
 l'expliquer et le partager. Un navigateur ne peut pas inspecter lui-même l'arbre
 USB ni les vitesses de lien (WebUSB ne le permet pas), d'où ce découpage.
@@ -53,26 +55,31 @@ USB ni les vitesses de lien (WebUSB ne le permet pas), d'où ce découpage.
 ## Utilisation
 
 **Windows** : téléchargez `treasure-cables.exe` (artefact `treasure-cables-windows-x64`
-de la CI GitHub Actions) et double-cliquez dessus. Une interface plein écran
-s'ouvre, avec des onglets (Prises · Détails · Écrans · Diagnostic) et une barre
-de raccourcis :
+de la CI GitHub Actions) et double-cliquez dessus. L'interface s'ouvre dans une
+fenêtre (Edge en mode application, Material Design 3, thème clair ou sombre) :
 
-- **C — Tester un câble** : débranchez l'appareil, branchez-le avec le câble à
+- **Tester un câble** : débranchez l'appareil, branchez-le avec le câble à
   tester ; verdict immédiat (charge seule, limité à l'USB 2.0, défaillant,
-  correct) et tableau comparatif des câbles testés.
-- **R — Rafraîchir** (ou F5) : relance l'analyse.
-- **D — Diagnostic approfondi** (administrateur) : écoute la pile USB pendant
-  que vous débranchez et rebranchez ; les erreurs de lien sont la preuve la
-  plus directe d'un câble ou d'un connecteur défaillant.
-- **E — Exporter** : enregistre `rapport-treasure-cables-AAAAMMJJ-HHMMSS.json`
-  (sans numéros de série) à côté de l'exécutable.
-- **← →** onglets, **↑ ↓ / Page** défilement, **Q** quitter.
+  correct) et comparaison des câbles testés.
+- **Diagnostic approfondi** (administrateur) : écoute la pile USB pendant que
+  vous débranchez et rebranchez ; les erreurs de lien sont la preuve la plus
+  directe d'un câble ou d'un connecteur défaillant.
+- Onglets **Prises** (chaque prise physique, sa façade et ses appareils),
+  **Écrans** (liaison, mode natif, part du lien DisplayPort utilisée),
+  **Diagnostic** et **Détails** ; rafraîchir et exporter le rapport JSON.
 
-Pour les scripts, les options restent disponibles (`--json`, `--input`, `--details`, `--deep`, `--help`).
+L'interface est servie par l'exécutable lui-même, uniquement sur 127.0.0.1 et
+protégée par un jeton aléatoire ; l'outil s'arrête quand la fenêtre est fermée.
+`--tui` ouvre à la place une interface plein écran dans la console.
 
-**Depuis les sources** :
+Pour les scripts, les options restent disponibles (`--json`, `--input`, `--details`,
+`--deep`, `--tui`, `--gui`, `--no-window`, `--help`).
+
+**Depuis les sources** (l'interface web se compile d'abord, elle est ensuite
+embarquée dans l'exécutable) :
 
 ```sh
+(cd web && npm ci && npm run build)
 cargo run --release -p treasure-cables                 # diagnostic de la machine
 cargo run --release -p treasure-cables -- --json > rapport.json
 cargo run --release -p treasure-cables -- --input rapport.json

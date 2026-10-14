@@ -25,10 +25,36 @@ jobs:
       - name: Rapport de la machine de CI
         run: cargo run -p treasure-cables -- --json
 
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+
   windows-exe:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Interface web (embarquée dans l'exécutable)
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --release -p treasure-cables
       - uses: actions/upload-artifact@v4
@@ -44,4 +70,4 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - name: Le modèle et l'audit doivent rester compatibles WebAssembly
-        run: cargo check -p treasure-model -p treasure-audit --target wasm32-unknown-unknown
+        run: cargo check -p treasure-model -p treasure-audit -p treasure-present --target wasm32-unknown-unknown

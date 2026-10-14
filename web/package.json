@@ -1,0 +1,28 @@
+{
+  "name": "treasure-cables-web",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Interface de Treasure Cables (fenêtre de l'application et futur site web)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "theme": "tsx scripts/theme.mjs"
+  },
+  "dependencies": {
+    "@fontsource/roboto": "5.3.0",
+    "@material/web": "2.5.0",
+    "svelte": "5.57.2"
+  },
+  "devDependencies": {
+    "@material-symbols/svg-400": "^0.48.0",
+    "@material/material-color-utilities": "^0.4.0",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@tsconfig/svelte": "^5.0.8",
+    "svelte-check": "^4.7.6",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.4"
+  }
+}

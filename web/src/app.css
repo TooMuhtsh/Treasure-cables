@@ -1,0 +1,38 @@
+/* Styles globaux : typographie Material 3 et couleurs de verdict. */
+:root {
+  --md-ref-typeface-brand: 'Roboto', system-ui, sans-serif;
+  --md-ref-typeface-plain: 'Roboto', system-ui, sans-serif;
+
+  /* Verdicts (Material ne définit que l'erreur) : vert et ambre accordés au thème. */
+  --treasure-ok: #146c2e;
+  --treasure-ok-container: #c4efcb;
+  --treasure-on-ok-container: #002109;
+  --treasure-warn: #8a5100;
+  --treasure-warn-container: #ffdcbe;
+  --treasure-on-warn-container: #2c1600;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --treasure-ok: #8bd99a;
+    --treasure-ok-container: #00531f;
+    --treasure-on-ok-container: #a6f5b4;
+    --treasure-warn: #ffb870;
+    --treasure-warn-container: #693c00;
+    --treasure-on-warn-container: #ffdcbe;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font: 400 15px/1.4 var(--md-ref-typeface-plain);
+  -webkit-font-smoothing: antialiased;
+}

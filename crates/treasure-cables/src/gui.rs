@@ -60,6 +60,7 @@ pub fn run(config: Config) -> io::Result<()> {
         cable_results: Vec::new(),
         deep: None,
         last_contact: Instant::now(),
+        closing_since: None,
         exit: false,
         message: None,
     };
@@ -87,6 +88,12 @@ pub fn run(config: Config) -> io::Result<()> {
             Err(e) => return Err(e),
         }
         app.tick();
+        if app
+            .closing_since
+            .is_some_and(|t| t.elapsed() > Duration::from_secs(3))
+        {
+            break; // l'écoute éventuelle est arrêtée proprement à la sortie
+        }
         if opened
             && app.last_contact.elapsed() > IDLE_TIMEOUT
             && app.cable.is_none()
@@ -106,6 +113,9 @@ struct App {
     cable_results: Vec<CableVerdict>,
     deep: Option<(DeepCapture, Instant)>,
     last_contact: Instant,
+    /// Fermeture annoncée par la fenêtre ; annulée si elle se manifeste
+    /// de nouveau (simple rechargement de la page).
+    closing_since: Option<Instant>,
     exit: bool,
     /// Message ponctuel pour l'interface (affiché une fois).
     message: Option<Message>,
@@ -170,14 +180,14 @@ impl App {
             return respond(request, 401, "text/plain", b"Unauthorized".to_vec());
         }
         self.last_contact = Instant::now();
+        self.closing_since = None;
         let method = request.method().clone();
         match (method, path.as_str()) {
             (Method::Get, "/api/state") | (Method::Post, "/api/heartbeat") => {}
             (Method::Post, "/api/bye") => {
-                // La fenêtre se ferme ; une écoute en cours est arrêtée proprement.
-                self.cable = None;
-                self.deep = None;
-                self.exit = true;
+                // La fenêtre se ferme... ou se recharge : on attend un peu.
+                self.closing_since = Some(Instant::now());
+                return respond(request, 204, "text/plain", Vec::new());
             }
             (Method::Post, "/api/refresh") if self.live => {
                 self.report = treasure_collect::collect(&self.options).map_err(|e| e.to_string());
