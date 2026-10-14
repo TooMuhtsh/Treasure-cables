@@ -24,7 +24,17 @@ pub fn displays() -> Vec<Display> {
     let Some((paths, modes)) = query_active_paths() else {
         return Vec::new();
     };
-    paths.iter().map(|path| display(path, &modes)).collect()
+    let source = |p: &DISPLAYCONFIG_PATH_INFO| {
+        let a = p.sourceInfo.adapterId;
+        (a.LowPart, a.HighPart, p.sourceInfo.id)
+    };
+    paths
+        .iter()
+        .map(|path| Display {
+            mirrored: paths.iter().filter(|p| source(p) == source(path)).count() > 1,
+            ..display(path, &modes)
+        })
+        .collect()
 }
 
 fn query_active_paths() -> Option<(Vec<DISPLAYCONFIG_PATH_INFO>, Vec<DISPLAYCONFIG_MODE_INFO>)> {

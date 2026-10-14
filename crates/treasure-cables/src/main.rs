@@ -213,7 +213,12 @@ fn print_displays(report: &Report) {
                 (Some(w), Some(h), Some(hz)) => format!(" (natif : {w}×{h} à {hz:.0} Hz)"),
                 _ => String::new(),
             };
-            println!("  {name} : {connection}, {mode}{native}");
+            let mirrored = if d.mirrored {
+                ", affichage dupliqué"
+            } else {
+                ""
+            };
+            println!("  {name} : {connection}, {mode}{native}{mirrored}");
         }
     }
     if !report.usb4_routers.is_empty() {

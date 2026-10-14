@@ -204,6 +204,20 @@ pub struct Display {
     pub native_width: Option<u32>,
     pub native_height: Option<u32>,
     pub native_refresh_hz: Option<f64>,
+    /// Affichage dupliqué : la même image est envoyée à plusieurs écrans,
+    /// Windows impose alors une résolution commune.
+    #[serde(default)]
+    pub mirrored: bool,
+}
+
+impl Display {
+    /// Débit approximatif nécessaire au mode natif, en Gb/s (8 bits par
+    /// couleur, temps de suppression réduits CVT-RB : environ +8 %).
+    pub fn native_bandwidth_gbps(&self) -> Option<f64> {
+        let pixels = f64::from(self.native_width?) * f64::from(self.native_height?);
+        let hz = self.native_refresh_hz.unwrap_or(60.0);
+        Some(pixels * hz * 1.08 * 24.0 / 1e9)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

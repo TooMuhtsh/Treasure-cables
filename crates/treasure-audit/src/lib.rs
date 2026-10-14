@@ -253,20 +253,56 @@ fn check_display(display: &Display, out: &mut Vec<Finding>) {
         None => format!("{w}×{h}"),
     };
     let name = display.name.as_deref().unwrap_or("L'écran externe");
+    let required = display.native_bandwidth_gbps().unwrap_or(0.0);
+    let gbps = format!("{required:.1}").replace('.', ",");
+    // Repères (débit utile) : DisplayPort 2 voies HBR = 4,32 Gb/s ;
+    // 2 voies HBR2 (dock USB-C qui garde 2 voies pour l'USB 3) = 8,64 Gb/s ;
+    // HDMI 1.4 = 8,16 Gb/s.
+    let (severity, confidence, detail) = if display.mirrored {
+        (
+            Severity::Info,
+            Confidence::Likely,
+            "L'affichage est dupliqué : Windows applique la même résolution à tous les écrans. Choisissez « Étendre » ou « Deuxième écran uniquement » (touches Windows + P) pour retrouver le mode natif. Le câble n'est pas en cause.".to_owned(),
+        )
+    } else if required <= 4.32 {
+        (
+            Severity::Info,
+            Confidence::Likely,
+            format!(
+                "Le mode natif ne demande qu'environ {gbps} Gb/s, à la portée de n'importe quelle liaison {} : le câble n'est pas en cause. Vérifiez la résolution choisie dans Paramètres > Système > Écran.",
+                connection.label()
+            ),
+        )
+    } else if required <= 8.64 {
+        (
+            Severity::Info,
+            Confidence::Possible,
+            format!(
+                "Le mode natif demande environ {gbps} Gb/s, ce qu'une liaison même basique transporte. Vérifiez d'abord la résolution choisie dans Windows ; sinon, suspectez un adaptateur ou un câble ancien. Liaison : {}.",
+                connection.label()
+            ),
+        )
+    } else {
+        (
+            Severity::Warning,
+            Confidence::Possible,
+            format!(
+                "Le mode natif demande environ {gbps} Gb/s : plus qu'un DisplayPort à 2 voies HBR2 (8,6 Gb/s, cas d'un dock USB-C qui garde 2 voies pour l'USB 3) ou qu'un HDMI 1.4 (8,2 Gb/s). Si ce n'est pas un réglage de Windows, le câble, l'adaptateur ou le dock limite le débit. Liaison : {}.",
+                connection.label()
+            ),
+        )
+    };
     out.push(Finding {
         code: "display_below_native_mode",
-        severity: Severity::Warning,
-        confidence: Confidence::Possible,
+        severity,
+        confidence,
         subject: name.to_owned(),
         title: format!(
             "{name} fonctionne en {} au lieu de son mode natif {}",
             mode(w, h, display.refresh_hz),
             mode(nw, nh, display.native_refresh_hz)
         ),
-        detail: format!(
-            "Liaison : {}. Si ce n'est pas un réglage choisi dans Windows, la liaison manque de débit : câble USB-C ou HDMI trop ancien, adaptateur, ou dock qui réserve la moitié des voies à l'USB 3.",
-            connection.label()
-        ),
+        detail,
     });
 }
 
@@ -439,6 +475,7 @@ mod tests {
             native_width: Some(3840),
             native_height: Some(2160),
             native_refresh_hz: Some(60.0),
+            mirrored: false,
         };
         report.displays.push(display.clone());
         report.displays.push(Display {
@@ -449,6 +486,34 @@ mod tests {
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].code, "display_below_native_mode");
         assert!(findings[0].title.contains("30 Hz"));
+        // 4K à 60 Hz demande ~12,9 Gb/s : la liaison peut être en cause.
+        assert_eq!(findings[0].severity, Severity::Warning);
+    }
+
+    #[test]
+    fn low_bandwidth_display_mode_does_not_blame_cable() {
+        // Cas réel : écran 1920×1200 affiché en 1920×1080, en DisplayPort.
+        let display = Display {
+            name: Some("ANMITE".into()),
+            connection: Some(DisplayConnection::DisplayPort),
+            width: Some(1920),
+            height: Some(1080),
+            refresh_hz: Some(60.0),
+            native_width: Some(1920),
+            native_height: Some(1200),
+            native_refresh_hz: Some(60.0),
+            mirrored: false,
+        };
+        let mut report = report_with(Device::default());
+        report.displays.push(display.clone());
+        let findings = audit(&report);
+        assert_eq!(findings[0].severity, Severity::Info);
+        assert!(findings[0].detail.contains("pas en cause"));
+        assert!(findings[0].detail.contains("3,6 Gb/s"));
+
+        report.displays[0].mirrored = true;
+        let findings = audit(&report);
+        assert!(findings[0].detail.contains("dupliqué"));
     }
 
     #[test]
