@@ -3,7 +3,7 @@
 use std::process::ExitCode;
 
 use treasure_audit::{Confidence, Finding, Severity};
-use treasure_model::{Device, Report, Source, Sourced, Speed};
+use treasure_model::{Connector, Device, Report, Source, Sourced, Speed};
 
 const USAGE: &str = "\
 Treasure Cables : audit des ports, câbles et appareils USB
@@ -79,6 +79,7 @@ fn main() -> ExitCode {
     }
 
     print_tree(&report);
+    print_displays(&report);
     print_findings(&treasure_audit::audit(&report));
     for note in &report.notes {
         println!("ℹ {note}");
@@ -118,7 +119,7 @@ fn print_tree(report: &Report) {
         println!(
             "\n{}{controller} : {}",
             bus.id,
-            speed_text(bus.root_hub.speed, None)
+            ports_summary(&bus.root_hub)
         );
         for (i, child) in bus.root_hub.children.iter().enumerate() {
             print_device(child, "", i + 1 == bus.root_hub.children.len());
@@ -157,6 +158,73 @@ fn print_tree(report: &Report) {
                     .unwrap_or_default();
                 println!("    câble (e-marker) : {speed}{power}");
             }
+        }
+    }
+}
+
+/// "4 ports : 2 USB 3.x, 2 USB 2.0 ; dont 2 USB-C".
+fn ports_summary(hub: &Device) -> String {
+    let ports: Vec<_> = hub
+        .ports
+        .iter()
+        .filter(|p| p.connector != Some(Connector::Internal))
+        .collect();
+    if ports.is_empty() {
+        return speed_text(hub.speed, None);
+    }
+    let usb3 = ports
+        .iter()
+        .filter(|p| p.max_speed.is_some_and(|s| s.value.is_superspeed()))
+        .count();
+    let type_c = ports
+        .iter()
+        .filter(|p| p.connector == Some(Connector::TypeC))
+        .count();
+    let mut text = format!("{} ports accessibles", ports.len());
+    let mut kinds = Vec::new();
+    if usb3 > 0 {
+        kinds.push(format!("{usb3} USB 3.x"));
+    }
+    if ports.len() > usb3 {
+        kinds.push(format!("{} USB 2.0", ports.len() - usb3));
+    }
+    text.push_str(&format!(" ({})", kinds.join(", ")));
+    if type_c > 0 {
+        text.push_str(&format!(", dont {type_c} USB-C"));
+    }
+    text
+}
+
+fn print_displays(report: &Report) {
+    if !report.displays.is_empty() {
+        println!("\nÉcrans");
+        for d in &report.displays {
+            let name = d.name.as_deref().unwrap_or("Écran");
+            let connection = d
+                .connection
+                .map(|c| c.label())
+                .unwrap_or("liaison inconnue");
+            let mode = match (d.width, d.height, d.refresh_hz) {
+                (Some(w), Some(h), Some(hz)) => format!("{w}×{h} à {hz:.0} Hz"),
+                (Some(w), Some(h), None) => format!("{w}×{h}"),
+                _ => "mode inconnu".to_owned(),
+            };
+            let native = match (d.native_width, d.native_height, d.native_refresh_hz) {
+                (Some(w), Some(h), Some(hz)) => format!(" (natif : {w}×{h} à {hz:.0} Hz)"),
+                _ => String::new(),
+            };
+            println!("  {name} : {connection}, {mode}{native}");
+        }
+    }
+    if !report.usb4_routers.is_empty() {
+        println!("\nUSB4 / Thunderbolt");
+        for r in &report.usb4_routers {
+            let role = if r.host {
+                "routeur de l'ordinateur"
+            } else {
+                "appareil USB4 branché"
+            };
+            println!("  {} : {role}", r.name);
         }
     }
 }

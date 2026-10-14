@@ -158,6 +158,7 @@ fn read_device(usb_dir: &Path, name: &str, dir: &Path, bos_missing: &mut bool) -
         port: read_port(usb_dir, dir),
         problem: None,
         alt_modes,
+        ports: Vec::new(),
         children: Vec::new(),
     }
 }

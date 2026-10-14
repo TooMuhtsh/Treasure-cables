@@ -26,6 +26,10 @@ pub struct Report {
     pub buses: Vec<Bus>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub typec_ports: Vec<typec::TypeCPort>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub displays: Vec<Display>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub usb4_routers: Vec<Usb4Router>,
     /// Limites rencontrées pendant la collecte (droits, API absentes...).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<String>,
@@ -178,11 +182,75 @@ pub struct Device {
     pub is_hub: bool,
     pub port: Option<PortInfo>,
     pub problem: Option<ConnectionProblem>,
+    /// Ports en aval d'un hub (libres ou occupés) : ce que la machine sait faire.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ports: Vec<PortInfo>,
     /// Modes alternatifs annoncés par un appareil Billboard (BOS 0x0D).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub alt_modes: Vec<AltMode>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<Device>,
+}
+
+/// Écran actif.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Display {
+    pub name: Option<String>,
+    pub connection: Option<DisplayConnection>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub refresh_hz: Option<f64>,
+    /// Mode natif (préféré) annoncé par l'écran (EDID).
+    pub native_width: Option<u32>,
+    pub native_height: Option<u32>,
+    pub native_refresh_hz: Option<f64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DisplayConnection {
+    Internal,
+    /// Port DisplayPort, ou USB-C en mode alternatif DisplayPort.
+    DisplayPort,
+    /// DisplayPort transporté dans un tunnel USB4 / Thunderbolt.
+    DisplayPortUsbTunnel,
+    Hdmi,
+    Dvi,
+    Vga,
+    Wireless,
+    Other,
+}
+
+impl DisplayConnection {
+    pub fn label(self) -> &'static str {
+        match self {
+            DisplayConnection::Internal => "écran intégré",
+            DisplayConnection::DisplayPort => "DisplayPort (port DP ou USB-C en mode alternatif)",
+            DisplayConnection::DisplayPortUsbTunnel => {
+                "DisplayPort dans un tunnel USB4 / Thunderbolt"
+            }
+            DisplayConnection::Hdmi => "HDMI",
+            DisplayConnection::Dvi => "DVI",
+            DisplayConnection::Vga => "VGA",
+            DisplayConnection::Wireless => "sans fil (Miracast)",
+            DisplayConnection::Other => "autre",
+        }
+    }
+
+    pub fn is_external_cable(self) -> bool {
+        !matches!(
+            self,
+            DisplayConnection::Internal | DisplayConnection::Wireless | DisplayConnection::Other
+        )
+    }
+}
+
+/// Routeur USB4 / Thunderbolt (l'hôte, ou un appareil USB4 branché).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Usb4Router {
+    pub name: String,
+    /// Vrai pour le routeur de l'ordinateur, faux pour un appareil branché.
+    pub host: bool,
 }
 
 /// Mode alternatif USB-C (DisplayPort, Thunderbolt, USB4...) tel que décrit
@@ -298,6 +366,8 @@ mod tests {
                 },
             }],
             typec_ports: vec![],
+            displays: vec![],
+            usb4_routers: vec![],
             notes: vec![],
         };
         report.redact();

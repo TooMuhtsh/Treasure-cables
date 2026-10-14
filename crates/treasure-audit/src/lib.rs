@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use treasure_model::typec::{CableKind, CableSpeed, TypeCPort};
-use treasure_model::{AltModeState, ConnectionProblem, Device, Report, Source};
+use treasure_model::{AltModeState, ConnectionProblem, Device, Display, Report, Source};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -46,6 +46,9 @@ pub fn audit(report: &Report) -> Vec<Finding> {
     }
     for port in &report.typec_ports {
         check_cable(port, &mut findings);
+    }
+    for display in &report.displays {
+        check_display(display, &mut findings);
     }
     findings.sort_by(|a, b| {
         b.severity
@@ -220,6 +223,53 @@ fn check_alt_modes(device: &Device, out: &mut Vec<Finding>) {
     }
 }
 
+/// Écran externe en dessous de son mode natif : réglage volontaire, ou
+/// liaison (câble, adaptateur, dock) qui ne transporte pas assez de débit.
+fn check_display(display: &Display, out: &mut Vec<Finding>) {
+    let Some(connection) = display.connection else {
+        return;
+    };
+    if !connection.is_external_cable() {
+        return;
+    }
+    let (Some(w), Some(h), Some(nw), Some(nh)) = (
+        display.width,
+        display.height,
+        display.native_width,
+        display.native_height,
+    ) else {
+        return;
+    };
+    let lower_resolution = u64::from(w) * u64::from(h) < u64::from(nw) * u64::from(nh);
+    let lower_refresh = match (display.refresh_hz, display.native_refresh_hz) {
+        (Some(hz), Some(native)) => hz + 1.0 < native,
+        _ => false,
+    };
+    if !lower_resolution && !lower_refresh {
+        return;
+    }
+    let mode = |w: u32, h: u32, hz: Option<f64>| match hz {
+        Some(hz) => format!("{w}×{h} à {hz:.0} Hz"),
+        None => format!("{w}×{h}"),
+    };
+    let name = display.name.as_deref().unwrap_or("L'écran externe");
+    out.push(Finding {
+        code: "display_below_native_mode",
+        severity: Severity::Warning,
+        confidence: Confidence::Possible,
+        subject: name.to_owned(),
+        title: format!(
+            "{name} fonctionne en {} au lieu de son mode natif {}",
+            mode(w, h, display.refresh_hz),
+            mode(nw, nh, display.native_refresh_hz)
+        ),
+        detail: format!(
+            "Liaison : {}. Si ce n'est pas un réglage choisi dans Windows, la liaison manque de débit : câble USB-C ou HDMI trop ancien, adaptateur, ou dock qui réserve la moitié des voies à l'USB 3.",
+            connection.label()
+        ),
+    });
+}
+
 fn check_cable(port: &TypeCPort, out: &mut Vec<Finding>) {
     let Some(cable) = &port.cable else {
         if port.partner.is_some() {
@@ -282,7 +332,8 @@ mod tests {
     use super::*;
     use treasure_model::typec::{Cable, CableVdo, Partner};
     use treasure_model::{
-        AltMode, Bus, HostInfo, PortInfo, SCHEMA_VERSION, Sourced, Speed, ToolInfo,
+        AltMode, Bus, DisplayConnection, HostInfo, PortInfo, SCHEMA_VERSION, Sourced, Speed,
+        ToolInfo,
     };
 
     fn report_with(device: Device) -> Report {
@@ -308,6 +359,8 @@ mod tests {
                 },
             }],
             typec_ports: vec![],
+            displays: vec![],
+            usb4_routers: vec![],
             notes: vec![],
         }
     }
@@ -372,6 +425,30 @@ mod tests {
         assert_eq!(findings[0].code, "alt_mode_not_entered");
         assert_eq!(findings[0].confidence, Confidence::Likely);
         assert!(findings[0].title.contains("DisplayPort"));
+    }
+
+    #[test]
+    fn external_display_below_native_refresh_is_flagged() {
+        let mut report = report_with(Device::default());
+        let display = Display {
+            name: Some("DELL U2723QE".into()),
+            connection: Some(DisplayConnection::DisplayPort),
+            width: Some(3840),
+            height: Some(2160),
+            refresh_hz: Some(30.0),
+            native_width: Some(3840),
+            native_height: Some(2160),
+            native_refresh_hz: Some(60.0),
+        };
+        report.displays.push(display.clone());
+        report.displays.push(Display {
+            refresh_hz: Some(59.997),
+            ..display
+        });
+        let findings = audit(&report);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].code, "display_below_native_mode");
+        assert!(findings[0].title.contains("30 Hz"));
     }
 
     #[test]

@@ -31,7 +31,8 @@ use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
 };
 use windows_sys::Win32::Devices::Properties::{
     DEVPKEY_Device_BusReportedDeviceDesc, DEVPKEY_Device_DeviceDesc, DEVPKEY_Device_Driver,
-    DEVPKEY_Device_InstanceId, DEVPKEY_Device_PowerData,
+    DEVPKEY_Device_FriendlyName, DEVPKEY_Device_InstanceId, DEVPKEY_Device_PowerData,
+    DEVPKEY_Device_Service,
 };
 use windows_sys::Win32::Devices::Usb::{
     GUID_DEVINTERFACE_USB_HOST_CONTROLLER, IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION,
@@ -51,7 +52,8 @@ use windows_sys::Win32::System::IO::DeviceIoControl;
 use windows_sys::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW};
 
 use treasure_model::{
-    Bcd, Bus, ConnectionProblem, Connector, Device, Lanes, PortInfo, Report, Source, Sourced, Speed,
+    Bcd, Bus, ConnectionProblem, Connector, Device, Lanes, PortInfo, Report, Source, Sourced,
+    Speed, Usb4Router,
 };
 
 use crate::{Error, bos, empty_report};
@@ -132,7 +134,7 @@ pub fn collect() -> Result<Report, Error> {
             devnodes: &devnodes,
             notes: &mut report.notes,
         };
-        let children = walker.hub_ports(&device_path(&root_name), &bus);
+        let (ports, children) = walker.hub_ports(&device_path(&root_name), &bus);
         report.buses.push(Bus {
             id: format!("usb{bus}"),
             controller,
@@ -140,11 +142,14 @@ pub fn collect() -> Result<Report, Error> {
                 location: format!("usb{bus}"),
                 product: Some("Hub racine".to_owned()),
                 is_hub: true,
+                ports,
                 children,
                 ..Default::default()
             },
         });
     }
+    report.displays = crate::windows_display::displays();
+    report.usb4_routers = usb4_routers();
     report.notes.dedup();
     Ok(report)
 }
@@ -156,27 +161,57 @@ struct Walker<'a> {
 
 impl Walker<'_> {
     /// Interroge chaque port d'un hub et renvoie les appareils branchés.
-    fn hub_ports(&mut self, hub_path: &str, location: &str) -> Vec<Device> {
+    fn hub_ports(&mut self, hub_path: &str, location: &str) -> (Vec<PortInfo>, Vec<Device>) {
         let Some(hub) = Handle::open(hub_path) else {
             self.notes.push(format!("Hub inaccessible : {hub_path}"));
-            return Vec::new();
+            return (Vec::new(), Vec::new());
         };
-        let ports = port_count(&hub);
+        let count = port_count(&hub);
+        let mut ports = Vec::new();
         let mut devices = Vec::new();
-        for port in 1..=ports {
+        for port in 1..=count {
             let child_location = if location.contains('-') {
                 format!("{location}.{port}")
             } else {
                 format!("{location}-{port}")
             };
-            if let Some(device) = self.port_device(&hub, port, &child_location) {
-                devices.push(device);
+            let connector = port_connector(&hub, port);
+            // Un connecteur USB 3 apparaît comme deux ports (USB 2 et USB 3) :
+            // on ne compte la paire qu'une fois, sur le premier des deux.
+            let duplicate = connector.as_ref().is_some_and(|c| {
+                u32::from(c.companion_port) < port
+                    && c.companion_port != 0
+                    && c.companion_hub
+                        .as_deref()
+                        .is_some_and(|h| h.eq_ignore_ascii_case(hub_path))
+            });
+            let device = self.port_device(&hub, port, &child_location, connector.as_ref());
+            let info = match &device {
+                Some(d) => d.port.clone(),
+                None => Some(self.port_info(
+                    port,
+                    connection_info_v2(&hub, port),
+                    connector.as_ref(),
+                    None,
+                )),
+            };
+            if let Some(info) = info
+                && !duplicate
+            {
+                ports.push(info);
             }
+            devices.extend(device);
         }
-        devices
+        (ports, devices)
     }
 
-    fn port_device(&mut self, hub: &Handle, port: u32, location: &str) -> Option<Device> {
+    fn port_device(
+        &mut self,
+        hub: &Handle,
+        port: u32,
+        location: &str,
+        connector: Option<&ConnectorInfo>,
+    ) -> Option<Device> {
         let ex = connection_info_ex(hub, port)?;
         let status = i32::from_le_bytes(ex[EX_STATUS..EX_STATUS + 4].try_into().ok()?);
         if status == NO_DEVICE_CONNECTED {
@@ -190,7 +225,6 @@ impl Walker<'_> {
 
         let v2 = connection_info_v2(hub, port);
         let flags = v2.map(|v| v.flags).unwrap_or(0);
-        let connector = port_connector(hub, port);
 
         // Vitesse réelle : le champ Speed ne dépasse jamais High Speed,
         // les drapeaux V2 disent si le lien est SuperSpeed(Plus).
@@ -291,7 +325,7 @@ impl Walker<'_> {
         device.port = Some(self.port_info(port, v2, connector, speed));
 
         if is_hub && let Some(name) = connection_name(hub, port) {
-            device.children = self.hub_ports(&device_path(&name), location);
+            (device.ports, device.children) = self.hub_ports(&device_path(&name), location);
         }
         Some(device)
     }
@@ -300,14 +334,14 @@ impl Walker<'_> {
         &mut self,
         port: u32,
         v2: Option<V2Info>,
-        connector: Option<ConnectorInfo>,
+        connector: Option<&ConnectorInfo>,
         speed: Option<Sourced<Speed>>,
     ) -> PortInfo {
         // Capacité du port : ses protocoles, ceux de son compagnon (l'autre
         // moitié USB 2 / USB 3 du même connecteur), et la vitesse obtenue.
         let mut protocols = v2.map(|v| v.protocols).unwrap_or(0);
         let mut companion = None;
-        if let Some(c) = &connector
+        if let Some(c) = connector
             && c.companion_port != 0
         {
             companion = Some(format!("port {}", c.companion_port));
@@ -331,7 +365,7 @@ impl Walker<'_> {
             (Some(d), Some(s)) if s.value > d.value => Some(s),
             (d, _) => d,
         };
-        let connector_kind = connector.as_ref().map(|c| {
+        let connector_kind = connector.map(|c| {
             if c.properties & PORT_CONNECTOR_IS_TYPE_C != 0 {
                 Connector::TypeC
             } else if c.properties & PORT_IS_USER_CONNECTABLE == 0 {
@@ -637,7 +671,7 @@ struct DevnodeIndex(HashMap<String, DevnodeInfo>);
 impl DevnodeIndex {
     fn load() -> Self {
         let mut map = HashMap::new();
-        for id in device_id_list("USB") {
+        for id in device_id_list(Some("USB")) {
             let Some(devinst) = locate_devnode(&id) else {
                 continue;
             };
@@ -708,18 +742,49 @@ fn interface_list(guid: &windows_sys::core::GUID) -> Vec<String> {
     split_multi_sz(&buffer)
 }
 
-fn device_id_list(enumerator: &str) -> Vec<String> {
-    let filter = to_wide(enumerator);
-    let flags = CM_GETIDLIST_FILTER_ENUMERATOR | CM_GETIDLIST_FILTER_PRESENT;
+/// Routeurs du gestionnaire de connexion USB4 de Microsoft (TB4/TB5, USB4).
+/// Les anciens contrôleurs Thunderbolt gérés par le firmware Intel n'y
+/// figurent pas.
+fn usb4_routers() -> Vec<Usb4Router> {
+    let mut routers = Vec::new();
+    for id in device_id_list(None) {
+        let Some(devinst) = locate_devnode(&id) else {
+            continue;
+        };
+        let Some(service) = devnode_string(devinst, &DEVPKEY_Device_Service) else {
+            continue;
+        };
+        let host = match service.to_ascii_lowercase().as_str() {
+            "usb4hostrouter" => true,
+            "usb4devicerouter" => false,
+            _ => continue,
+        };
+        let name = devnode_string(devinst, &DEVPKEY_Device_BusReportedDeviceDesc)
+            .or_else(|| devnode_string(devinst, &DEVPKEY_Device_FriendlyName))
+            .or_else(|| devnode_string(devinst, &DEVPKEY_Device_DeviceDesc))
+            .unwrap_or(id);
+        routers.push(Usb4Router { name, host });
+    }
+    routers.sort_by_key(|r| !r.host);
+    routers
+}
+
+fn device_id_list(enumerator: Option<&str>) -> Vec<String> {
+    let filter = enumerator.map(to_wide);
+    let filter_ptr = filter.as_ref().map_or(null(), |f| f.as_ptr());
+    let flags = if filter.is_some() {
+        CM_GETIDLIST_FILTER_ENUMERATOR | CM_GETIDLIST_FILTER_PRESENT
+    } else {
+        CM_GETIDLIST_FILTER_PRESENT
+    };
     let mut len = 0u32;
     // SAFETY: filtre terminé par un zéro.
-    if unsafe { CM_Get_Device_ID_List_SizeW(&mut len, filter.as_ptr(), flags) } != CR_SUCCESS {
+    if unsafe { CM_Get_Device_ID_List_SizeW(&mut len, filter_ptr, flags) } != CR_SUCCESS {
         return Vec::new();
     }
     let mut buffer = vec![0u16; len as usize];
     // SAFETY: tampon de `len` caractères.
-    if unsafe { CM_Get_Device_ID_ListW(filter.as_ptr(), buffer.as_mut_ptr(), len, flags) }
-        != CR_SUCCESS
+    if unsafe { CM_Get_Device_ID_ListW(filter_ptr, buffer.as_mut_ptr(), len, flags) } != CR_SUCCESS
     {
         return Vec::new();
     }

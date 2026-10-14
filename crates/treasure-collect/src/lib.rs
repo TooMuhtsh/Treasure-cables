@@ -8,6 +8,8 @@ pub mod bos;
 pub mod linux;
 #[cfg(windows)]
 pub mod windows;
+#[cfg(windows)]
+mod windows_display;
 
 use treasure_model::{HostInfo, Report, SCHEMA_VERSION, ToolInfo};
 
@@ -82,6 +84,8 @@ pub(crate) fn empty_report(os_version: Option<String>) -> Report {
         generated_at: None,
         buses: Vec::new(),
         typec_ports: Vec::new(),
+        displays: Vec::new(),
+        usb4_routers: Vec::new(),
         notes: Vec::new(),
     }
 }
