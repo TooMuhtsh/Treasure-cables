@@ -1,7 +1,12 @@
 //! Version portable de Treasure Cables.
 
+// Version publiée sous Windows : application graphique, sans console au
+// double-clic (les modes texte se rattachent au terminal appelant).
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod export;
 mod gui;
+mod platform;
 mod session;
 mod text;
 mod tui;
@@ -68,6 +73,7 @@ fn parse_args() -> Result<Args, String> {
             "--include-serials" => args.include_serials = true,
             "--input" => args.input = Some(it.next().ok_or("--input attend un fichier")?),
             "-V" | "--version" => {
+                platform::attach_console();
                 println!(
                     "treasure-cables {} ({})",
                     env!("CARGO_PKG_VERSION"),
@@ -76,6 +82,7 @@ fn parse_args() -> Result<Args, String> {
                 std::process::exit(0);
             }
             "-h" | "--help" => {
+                platform::attach_console();
                 println!("{USAGE}");
                 std::process::exit(0);
             }
@@ -89,6 +96,7 @@ fn main() -> ExitCode {
     let args = match parse_args() {
         Ok(a) => a,
         Err(e) => {
+            platform::attach_console();
             eprintln!("{e}");
             return ExitCode::from(2);
         }
@@ -98,39 +106,44 @@ fn main() -> ExitCode {
         ..Default::default()
     };
 
-    let console = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
-    let exit = |result: std::io::Result<()>| match result {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(e) => {
-            eprintln!("Erreur : {e}");
-            ExitCode::FAILURE
-        }
-    };
-
-    // Sans option (double-clic) : interface graphique.
-    let plain_request = args.json || args.details || args.input.is_some() || args.tui;
-    if args.gui || (console && !plain_request) {
-        let fixed_report = match &args.input {
-            Some(path) => match read_report(path) {
-                Ok(r) => Some(r),
-                Err(e) => {
-                    eprintln!("Erreur : {e}");
-                    return ExitCode::FAILURE;
-                }
-            },
-            None => None,
+    if args.tui {
+        platform::own_console();
+        return match tui::run(&options, args.deep) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("Erreur : {e}");
+                ExitCode::FAILURE
+            }
         };
-        return exit(gui::run(gui::Config {
+    }
+
+    // Par défaut : interface graphique. Ailleurs que sous Windows, seulement
+    // depuis un terminal interactif (pas quand la sortie est redirigée).
+    let text_request = args.json || args.details || (args.input.is_some() && !args.gui);
+    let interactive = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    if !text_request && (cfg!(windows) || args.gui || interactive) {
+        let fixed_report = match args.input.as_deref().map(read_report).transpose() {
+            Ok(r) => r,
+            Err(e) => {
+                platform::message(&format!("Rapport illisible : {e}"));
+                return ExitCode::FAILURE;
+            }
+        };
+        return match gui::run(gui::Config {
             options,
             start_deep: args.deep,
             open_window: !args.no_window,
             fixed_report,
-        }));
-    }
-    if args.tui && console {
-        return exit(tui::run(&options, args.deep));
+        }) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                platform::message(&format!("Treasure Cables n'a pas pu démarrer : {e}"));
+                ExitCode::FAILURE
+            }
+        };
     }
 
+    platform::attach_console();
     let report = match &args.input {
         Some(path) => read_report(path),
         None => treasure_collect::collect(&options).map_err(|e| e.to_string()),

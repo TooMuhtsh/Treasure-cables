@@ -73,11 +73,16 @@ pub fn run(config: Config) -> io::Result<()> {
     }
 
     let opened = config.open_window && open_window(&url);
-    if opened {
-        hide_console();
-    } else {
+    if !opened {
+        crate::platform::attach_console();
         println!("Treasure Cables est disponible à l'adresse :\n  {url}");
-        println!("(laissez cette fenêtre ouverte ; Ctrl+C pour quitter)");
+        println!("(Ctrl+C pour quitter)");
+        if config.open_window {
+            // Aucun navigateur n'a pu s'ouvrir : on donne l'adresse, sans
+            // bloquer le serveur.
+            let text = format!("Ouvrez cette adresse dans votre navigateur :\n{url}");
+            std::thread::spawn(move || crate::platform::message(&text));
+        }
     }
 
     let host_ok = [format!("127.0.0.1:{port}"), format!("localhost:{port}")];
@@ -449,27 +454,5 @@ fn app_browsers() -> Vec<std::path::PathBuf> {
             })
         })
         .collect()
-    }
-}
-
-/// Lancé par double-clic, la console qui accompagne l'exécutable est
-/// masquée : seule la fenêtre de l'interface reste visible.
-fn hide_console() {
-    #[cfg(windows)]
-    {
-        use windows_sys::Win32::System::Console::{GetConsoleProcessList, GetConsoleWindow};
-        use windows_sys::Win32::UI::WindowsAndMessaging::{SW_HIDE, ShowWindow};
-        let mut processes = [0u32; 2];
-        // SAFETY: tampon de deux entrées, taille passée.
-        let alone = unsafe { GetConsoleProcessList(processes.as_mut_ptr(), 2) } == 1;
-        if alone {
-            // SAFETY: poignée de la console du processus (ou nulle).
-            unsafe {
-                let window = GetConsoleWindow();
-                if !window.is_null() {
-                    ShowWindow(window, SW_HIDE);
-                }
-            }
-        }
     }
 }

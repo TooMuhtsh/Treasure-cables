@@ -70,10 +70,14 @@ fenêtre (Edge en mode application, Material Design 3, thème clair ou sombre) :
 
 L'interface est servie par l'exécutable lui-même, uniquement sur 127.0.0.1 et
 protégée par un jeton aléatoire ; l'outil s'arrête quand la fenêtre est fermée.
-`--tui` ouvre à la place une interface plein écran dans la console.
+Sous Windows, l'exécutable est une application fenêtrée : un double-clic
+n'ouvre aucune console. `--tui` ouvre à la place une interface plein écran
+dans sa propre console.
 
 Pour les scripts, les options restent disponibles (`--json`, `--input`, `--details`,
-`--deep`, `--tui`, `--gui`, `--no-window`, `--help`).
+`--deep`, `--tui`, `--gui`, `--no-window`, `--help`). Lancées depuis un
+terminal, elles y écrivent leur résultat ; sous PowerShell, la redirection
+fonctionne comme d'habitude : `.\treasure-cables.exe --json > rapport.json`.
 
 **Depuis les sources** (l'interface web se compile d'abord, elle est ensuite
 embarquée dans l'exécutable) :
