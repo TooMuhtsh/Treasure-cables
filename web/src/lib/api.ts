@@ -101,7 +101,14 @@ export interface Presentation {
   notes: string[];
 }
 
-export type Outcome = 'no_data' | 'not_recognized' | 'usb2_limited' | 'below_capability' | 'port_limited' | 'ok';
+export type Outcome =
+  | 'no_data'
+  | 'not_recognized'
+  | 'usb2_limited'
+  | 'below_capability'
+  | 'port_limited'
+  | 'link_dropped'
+  | 'ok';
 
 export interface CableVerdict {
   outcome: Outcome;
@@ -114,6 +121,14 @@ export interface CableVerdict {
 
 /** Étape de l'assistant « Tester un câble ». */
 export type CableStep = 'closed' | 'intro' | 'watch' | 'verdict';
+/** Étape de l'assistant « Tester avec mon téléphone ». */
+export type PhoneStep = 'closed' | 'intro' | 'running' | 'verdict';
+
+export interface ProbeProgress {
+  phase: 'searching' | 'approval' | 'measuring';
+  text: string;
+  probe: string | null;
+}
 
 export type Theme = 'auto' | 'light' | 'dark';
 
@@ -131,6 +146,8 @@ export interface State {
   theme: Theme;
   /** Version du rapport, augmentée à chaque analyse automatique. */
   version: number;
+  /** Test avec le téléphone en cours. */
+  probe: ProbeProgress | null;
 }
 
 // Le jeton arrive dans l'adresse ouverte par l'application ; on le garde
@@ -166,6 +183,8 @@ export const api = {
   deepStart: () => call('POST', 'deep/start'),
   deepFinish: () => call('POST', 'deep/finish'),
   elevate: () => call('POST', 'elevate'),
+  probeStart: () => call('POST', 'probe/start'),
+  probeCancel: () => call('POST', 'probe/cancel'),
   setTheme: (theme: Theme) => call('POST', `theme/${theme}`),
   /** La fenêtre se ferme : le serveur s'arrête s'il n'a plus de nouvelles. */
   bye: () => {
@@ -185,4 +204,12 @@ export function speedRatio(mbps: number | null): number {
 export function applyTheme(theme: Theme) {
   if (theme === 'auto') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = theme;
+}
+
+/** Icône et teinte d'un verdict de câble. */
+export function verdictLook(v: CableVerdict): { icon: 'error' | 'warning' | 'checkCircle' | 'info'; tone: string } {
+  if (v.severity === 'problem') return { icon: 'error', tone: 'problem' };
+  if (v.severity === 'warning') return { icon: 'warning', tone: 'warning' };
+  if (v.outcome === 'ok') return { icon: 'checkCircle', tone: 'ok' };
+  return { icon: 'info', tone: 'info' };
 }

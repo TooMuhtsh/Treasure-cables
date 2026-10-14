@@ -23,6 +23,7 @@ use treasure_present::Presentation;
 
 use crate::export;
 use crate::prefs::{self, Prefs, Theme};
+use crate::probe::{ProbeProgress, ProbeTest};
 use crate::session::{self, CableWatch, DEEP_TIMEOUT};
 
 mod assets {
@@ -70,6 +71,7 @@ pub fn run(config: Config) -> io::Result<()> {
         exit: false,
         message: None,
         prefs: prefs::load(),
+        probe: None,
         watcher: None,
         seen_changes: 0,
         pending_change: None,
@@ -141,6 +143,8 @@ struct App {
     /// Message ponctuel pour l'interface (affiché une fois).
     message: Option<Message>,
     prefs: Prefs,
+    /// Test d'un câble avec le téléphone (application Treasure Probe).
+    probe: Option<ProbeTest>,
     /// Branchements et débranchements : l'analyse est relancée seule.
     watcher: Option<ChangeWatcher>,
     seen_changes: u64,
@@ -173,6 +177,7 @@ struct State<'a> {
     message: Option<Message>,
     theme: Theme,
     version: u64,
+    probe: Option<ProbeProgress>,
 }
 
 #[derive(Serialize)]
@@ -261,6 +266,14 @@ impl App {
             (Method::Post, "/api/cable/finish") => self.finish_cable(),
             (Method::Post, "/api/cable/cancel") => self.cable = None,
             (Method::Post, "/api/cable/clear") => self.cable_results.clear(),
+            (Method::Post, "/api/probe/start") if self.live && self.probe.is_none() => {
+                self.probe = Some(ProbeTest::start(&self.options));
+            }
+            (Method::Post, "/api/probe/cancel") => {
+                if let Some(probe) = self.probe.take() {
+                    probe.cancel();
+                }
+            }
             (Method::Post, "/api/deep/start") if self.live => self.start_deep(),
             (Method::Post, "/api/deep/finish") => self.finish_deep(),
             (Method::Post, p) if p.starts_with("/api/theme/") => {
@@ -310,11 +323,28 @@ impl App {
             message: self.message.take(),
             theme: self.prefs.theme,
             version: self.version,
+            probe: self.probe.as_ref().map(ProbeTest::progress),
         };
         serde_json::to_string(&state).unwrap_or_else(|_| "{}".to_owned())
     }
 
     fn tick(&mut self) {
+        if self.probe.as_ref().is_some_and(ProbeTest::is_finished)
+            && let Some(probe) = self.probe.take()
+        {
+            match probe.finish() {
+                Ok((verdict, report)) => {
+                    self.cable_results.push(verdict);
+                    self.report = Ok(report);
+                }
+                Err(e) => self.error(e),
+            }
+            // Le partage de connexion a fait apparaître des appareils : la
+            // fenêtre doit l'apprendre sans attendre.
+            self.version += 1;
+            let waiters = std::mem::take(&mut self.waiters);
+            self.answer(waiters);
+        }
         if let Some(watcher) = &self.watcher {
             let count = watcher.count();
             if count != self.seen_changes {
@@ -329,7 +359,7 @@ impl App {
             self.pending_change = None;
             // Pendant un test de câble ou une écoute, c'est leur propre
             // analyse finale qui compte (et qui sert de point de comparaison).
-            if self.cable.is_none() && self.deep.is_none() {
+            if self.cable.is_none() && self.deep.is_none() && self.probe.is_none() {
                 self.auto_refresh();
             }
         }

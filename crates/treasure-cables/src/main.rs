@@ -8,6 +8,7 @@ mod export;
 mod gui;
 mod platform;
 mod prefs;
+mod probe;
 mod session;
 mod text;
 mod tui;

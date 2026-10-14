@@ -7,18 +7,24 @@
   import Displays from './lib/Displays.svelte';
   import ElevationDialog from './lib/ElevationDialog.svelte';
   import Icon from './lib/Icon.svelte';
+  import PhoneWizard from './lib/PhoneWizard.svelte';
   import Plugs from './lib/Plugs.svelte';
   import type { IconName } from './lib/icons';
-  import { api, applyTheme, type CableStep, type State, type Theme } from './lib/api';
+  import { api, applyTheme, type CableStep, type PhoneStep, type State, type Theme } from './lib/api';
 
   let st = $state<State | null>(null);
   let tab = $state(0);
   let busy = $state(false);
   let cableStep = $state<CableStep>('closed');
+  let phoneStep = $state<PhoneStep>('closed');
+  /** Nombre de verdicts au lancement du test avec le téléphone. */
+  let phoneResultsBefore = 0;
   let elevationAsked = $state(false);
   let handedOff = $state(false);
   let snack = $state<{ text: string; tone: string } | null>(null);
   let snackTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Relance tout de suite l'interrogation du serveur (une opération démarre). */
+  let poke = () => {};
 
   const tabs: { label: string; icon: IconName }[] = [
     { label: 'Prises', icon: 'usb' },
@@ -67,6 +73,11 @@
     else if (next.message) notify(next.message.text, next.message.level === 'error' ? 'error' : 'ok');
     // Le test s'est terminé côté serveur (appareil détecté ou délai écoulé).
     if (cableStep === 'watch' && !next.cable) cableStep = 'verdict';
+    // Test avec le téléphone terminé : verdict, ou retour au départ (l'erreur
+    // est annoncée par le message du serveur).
+    if (phoneStep === 'running' && !next.probe) {
+      phoneStep = next.cable_results.length > phoneResultsBefore ? 'verdict' : 'intro';
+    }
   }
 
   async function run(action: () => Promise<State>, label?: string) {
@@ -87,7 +98,7 @@
     run(api.state);
     let timer: ReturnType<typeof setTimeout>;
     const loop = async () => {
-      const active = cableStep === 'watch' || st?.deep;
+      const active = cableStep === 'watch' || phoneStep === 'running' || st?.deep;
       if (!handedOff) {
         try {
           apply(await api.state());
@@ -98,6 +109,10 @@
       timer = setTimeout(loop, active ? 1000 : 30000);
     };
     timer = setTimeout(loop, 1000);
+    poke = () => {
+      clearTimeout(timer);
+      timer = setTimeout(loop, 300);
+    };
 
     // Branchements et débranchements : le serveur répond à cette attente
     // dès qu'il a refait l'analyse.
@@ -132,7 +147,25 @@
     try {
       const next = await api.cableStart();
       apply(next);
-      if (next.cable) cableStep = 'watch';
+      if (next.cable) {
+        cableStep = 'watch';
+        poke();
+      }
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function startPhone() {
+    phoneResultsBefore = st?.cable_results.length ?? 0;
+    busy = true;
+    try {
+      const next = await api.probeStart();
+      phoneStep = 'running';
+      apply(next);
+      poke();
+    } catch (e) {
+      notify(e instanceof Error ? e.message : String(e), 'error');
     } finally {
       busy = false;
     }
@@ -199,12 +232,20 @@
           <md-filled-button onclick={() => (cableStep = 'intro')}>Commencer</md-filled-button>
         </article>
         <article class="action">
+          <Icon name="phone" size={32} />
+          <div>
+            <h2>Tester avec mon téléphone</h2>
+            <p>Le téléphone devient testeur : débit réel dans les deux sens et charge reçue, avec l'application Treasure Probe.</p>
+          </div>
+          <md-filled-tonal-button onclick={() => (phoneStep = 'intro')}>Commencer</md-filled-tonal-button>
+        </article>
+        <article class="action">
           <Icon name="radar" size={32} />
           <div>
             <h2>Diagnostic approfondi</h2>
             <p>Écoute la pile USB pendant que vous branchez et débranchez : la preuve d'un lien instable.{st.platform === 'windows' && !st.elevated ? ' Droits administrateur requis.' : ''}</p>
           </div>
-          <md-filled-tonal-button onclick={() => run(api.deepStart)}>Lancer</md-filled-tonal-button>
+          <md-filled-tonal-button onclick={() => run(api.deepStart).then(poke)}>Lancer</md-filled-tonal-button>
         </article>
       </section>
     {/if}
@@ -250,6 +291,16 @@
       }}
       onagain={() => (cableStep = 'intro')}
       onclose={() => (cableStep = 'closed')}
+    />
+    <PhoneWizard
+      step={phoneStep}
+      {st}
+      onstart={startPhone}
+      oncancel={async () => {
+        phoneStep = 'intro';
+        await run(api.probeCancel);
+      }}
+      onclose={() => (phoneStep = 'closed')}
     />
     <DeepDialog {st} onfinish={finishDeep} />
     <ElevationDialog
@@ -343,14 +394,15 @@
   }
   .actions {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
     gap: 16px;
     margin-bottom: 20px;
   }
   .action {
-    display: flex;
-    align-items: center;
-    gap: 16px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: start;
+    gap: 12px 16px;
     padding: 20px;
     border-radius: 24px;
     background: var(--md-sys-color-surface-container-high);
@@ -360,8 +412,9 @@
     background: var(--md-sys-color-primary-container);
     color: var(--md-sys-color-on-primary-container);
   }
-  .action > div {
-    flex: 1;
+  .action > :last-child {
+    grid-column: 1 / -1;
+    justify-self: end;
   }
   .action h2 {
     margin: 0 0 4px;

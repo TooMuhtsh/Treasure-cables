@@ -22,6 +22,8 @@ pub enum Outcome {
     BelowCapability,
     /// La prise utilisée est elle-même limitée : le test ne peut pas conclure.
     PortLimited,
+    /// La liaison s'est coupée pendant une mesure (test avec un téléphone).
+    LinkDropped,
     Ok,
 }
 
@@ -69,13 +71,6 @@ pub fn evaluate(before: &Report, after: &Report, link: Option<&LinkDiagnostics>)
     let errors: u32 = link
         .map(|l| l.ports.iter().map(|p| p.link_errors()).sum())
         .unwrap_or(0);
-    let fragile = if errors > 0 {
-        format!(
-            " Attention : {errors} erreur(s) de lien pendant le branchement, la connexion est fragile."
-        )
-    } else {
-        String::new()
-    };
 
     let new = new_devices(before, after);
     let Some(device) = new
@@ -107,6 +102,19 @@ pub fn evaluate(before: &Report, after: &Report, link: Option<&LinkDiagnostics>)
         };
     };
 
+    speed_verdict(device, errors)
+}
+
+/// Verdict sur la vitesse obtenue par un appareil reconnu ; `errors` compte
+/// les erreurs de lien relevées pendant le test.
+pub fn speed_verdict(device: &Device, errors: u32) -> CableVerdict {
+    let fragile = if errors > 0 {
+        format!(
+            " Attention : {errors} erreur(s) de lien pendant le test, la connexion est fragile."
+        )
+    } else {
+        String::new()
+    };
     let name = device.display_name();
     let base = |outcome, severity, title: String, detail: String| CableVerdict {
         outcome,

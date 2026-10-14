@@ -20,6 +20,7 @@ import radar from '@material-symbols/svg-400/outlined/radar.svg?raw';
 import devices from '@material-symbols/svg-400/outlined/devices.svg?raw';
 import arrowDown from '@material-symbols/svg-400/outlined/keyboard_arrow_down.svg?raw';
 import speed from '@material-symbols/svg-400/outlined/speed.svg?raw';
+import phone from '@material-symbols/svg-400/outlined/mobile.svg?raw';
 import themeAuto from '@material-symbols/svg-400/outlined/brightness_auto.svg?raw';
 import themeLight from '@material-symbols/svg-400/outlined/light_mode.svg?raw';
 import themeDark from '@material-symbols/svg-400/outlined/dark_mode.svg?raw';
@@ -45,6 +46,7 @@ export const icons = {
   devices,
   arrowDown,
   speed,
+  phone,
   themeAuto,
   themeLight,
   themeDark,

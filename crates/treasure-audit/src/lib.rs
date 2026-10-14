@@ -4,6 +4,7 @@
 //! tourne dans la version portable et, compilé en WebAssembly, sur le site web.
 
 pub mod cable_test;
+pub mod probe_test;
 
 use serde::{Deserialize, Serialize};
 use treasure_model::typec::{CableKind, CableSpeed, TypeCPort};

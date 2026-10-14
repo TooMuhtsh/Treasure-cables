@@ -1,7 +1,6 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
-  import type { IconName } from './icons';
-  import type { CableStep, CableVerdict, State } from './api';
+  import { verdictLook, type CableStep, type State } from './api';
 
   let {
     step,
@@ -24,12 +23,7 @@
   const timeout = 20;
   let last = $derived(st.cable_results.at(-1));
 
-  function look(v: CableVerdict): { icon: IconName; tone: string } {
-    if (v.severity === 'problem') return { icon: 'error', tone: 'problem' };
-    if (v.severity === 'warning') return { icon: 'warning', tone: 'warning' };
-    if (v.outcome === 'ok') return { icon: 'checkCircle', tone: 'ok' };
-    return { icon: 'info', tone: 'info' };
-  }
+  const look = verdictLook;
 
   function closed() {
     if (step === 'watch') oncancel();
