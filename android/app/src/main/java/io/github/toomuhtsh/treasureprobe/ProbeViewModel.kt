@@ -10,6 +10,7 @@ import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -50,7 +51,8 @@ class ProbeViewModel(application: Application) : AndroidViewModel(application), 
     @Volatile private var approval: CompletableFuture<Boolean>? = null
 
     init {
-        viewModelScope.launch {
+        // Hors du fil de l'interface : ouverture des ports du serveur.
+        viewModelScope.launch(Dispatchers.IO) {
             while (isActive) {
                 refresh()
                 delay(1000)
