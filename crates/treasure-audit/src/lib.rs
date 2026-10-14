@@ -5,7 +5,9 @@
 
 use serde::{Deserialize, Serialize};
 use treasure_model::typec::{CableKind, CableSpeed, TypeCPort};
-use treasure_model::{AltModeState, ConnectionProblem, Device, Display, Report, Source};
+use treasure_model::{
+    AltModeState, ConnectionProblem, Device, Display, DisplayTransport, DpLink, Report, Source,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -264,6 +266,46 @@ fn check_display(display: &Display, out: &mut Vec<Finding>) {
             Confidence::Likely,
             "L'affichage est dupliqué : Windows applique la même résolution à tous les écrans. Choisissez « Étendre » ou « Deuxième écran uniquement » (touches Windows + P) pour retrouver le mode natif. Le câble n'est pas en cause.".to_owned(),
         )
+    } else if let Some(link) = &display.link {
+        // Le lien réel est connu : il tranche.
+        if link.capacity_gbps() >= required {
+            return; // le lien transporte le mode natif : c'est un réglage
+        }
+        let mut causes = Vec::new();
+        if let Some(max) = link.max_lanes
+            && link.lanes < max
+        {
+            causes.push(if display.transport == Some(DisplayTransport::UsbC) {
+                format!(
+                    "seulement {} voies sur {max} : en USB-C, les autres sont réservées à l'USB 3 (dock ou écran avec hub USB 3) ou absentes du câble",
+                    link.lanes
+                )
+            } else {
+                format!("seulement {} voies sur {max}", link.lanes)
+            });
+        }
+        if let Some(max) = link.max_lane_rate_mbps
+            && link.lane_rate_mbps < max
+        {
+            causes.push(format!(
+                "débit par voie {} au lieu de {} : l'entraînement du lien a échoué au débit supérieur, signe d'un câble ou d'un adaptateur de qualité insuffisante",
+                DpLink::rate_name(link.lane_rate_mbps),
+                DpLink::rate_name(max)
+            ));
+        }
+        let causes = if causes.is_empty() {
+            String::new()
+        } else {
+            format!(" En cause : {}.", causes.join(" ; "))
+        };
+        (
+            Severity::Warning,
+            Confidence::Likely,
+            format!(
+                "Le lien DisplayPort négocié ({}) ne transporte pas les {gbps} Gb/s du mode natif.{causes}",
+                link.label()
+            ),
+        )
     } else if required <= 4.32 {
         // N'importe quelle liaison transporte ce mode : c'est un réglage
         // choisi dans Windows, pas un sujet de câble. On ne dit rien.
@@ -363,8 +405,8 @@ mod tests {
     use super::*;
     use treasure_model::typec::{Cable, CableVdo, Partner};
     use treasure_model::{
-        AltMode, Bus, DisplayConnection, HostInfo, PortInfo, SCHEMA_VERSION, Sourced, Speed,
-        ToolInfo,
+        AltMode, Bus, DisplayConnection, DisplayTransport, DpLink, HostInfo, PortInfo,
+        SCHEMA_VERSION, Sourced, Speed, ToolInfo,
     };
 
     fn report_with(device: Device) -> Report {
@@ -471,6 +513,9 @@ mod tests {
             native_height: Some(2160),
             native_refresh_hz: Some(60.0),
             mirrored: false,
+            gpu: None,
+            transport: None,
+            link: None,
         };
         report.displays.push(display.clone());
         report.displays.push(Display {
@@ -486,6 +531,41 @@ mod tests {
     }
 
     #[test]
+    fn known_link_decides_display_findings() {
+        let display = Display {
+            name: Some("Écran 4K".into()),
+            connection: Some(DisplayConnection::DisplayPort),
+            width: Some(3840),
+            height: Some(2160),
+            refresh_hz: Some(30.0),
+            native_width: Some(3840),
+            native_height: Some(2160),
+            native_refresh_hz: Some(60.0),
+            mirrored: false,
+            gpu: None,
+            transport: Some(DisplayTransport::UsbC),
+            link: Some(DpLink {
+                lane_rate_mbps: 5400,
+                lanes: 2,
+                max_lane_rate_mbps: Some(5400),
+                max_lanes: Some(4),
+                source: "test".into(),
+            }),
+        };
+        let mut report = report_with(Device::default());
+        report.displays.push(display);
+        // 2 voies HBR2 = 8,64 Gb/s < ~12,9 Gb/s : la liaison limite.
+        let findings = audit(&report);
+        assert_eq!(findings[0].confidence, Confidence::Likely);
+        assert!(findings[0].detail.contains("2 voies sur 4"));
+        assert!(findings[0].detail.contains("USB 3"));
+
+        // 4 voies HBR2 = 17,28 Gb/s : le mode natif passe, c'est un réglage.
+        report.displays[0].link.as_mut().unwrap().lanes = 4;
+        assert!(audit(&report).is_empty());
+    }
+
+    #[test]
     fn low_bandwidth_display_mode_is_silent_unless_mirrored() {
         // Cas réel : écran 1920×1200 volontairement réglé en 1920×1080.
         let display = Display {
@@ -498,6 +578,9 @@ mod tests {
             native_height: Some(1200),
             native_refresh_hz: Some(60.0),
             mirrored: false,
+            gpu: None,
+            transport: None,
+            link: None,
         };
         let mut report = report_with(Device::default());
         report.displays.push(display);

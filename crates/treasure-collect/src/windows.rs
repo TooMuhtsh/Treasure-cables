@@ -836,6 +836,14 @@ fn locate_devnode(instance_id: &str) -> Option<u32> {
     (r == CR_SUCCESS).then_some(devinst)
 }
 
+/// Description PnP du périphérique qui expose une interface (nom d'une carte
+/// graphique à partir de son chemin d'adaptateur, par exemple).
+pub(crate) fn interface_description(path: &str) -> Option<String> {
+    let devnode = interface_devnode(path)?;
+    devnode_string(devnode, &DEVPKEY_Device_FriendlyName)
+        .or_else(|| devnode_string(devnode, &DEVPKEY_Device_DeviceDesc))
+}
+
 fn interface_devnode(path: &str) -> Option<u32> {
     let wide = to_wide(path);
     let mut kind = 0u32;

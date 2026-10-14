@@ -208,6 +208,79 @@ pub struct Display {
     /// Windows impose alors une résolution commune.
     #[serde(default)]
     pub mirrored: bool,
+    /// Carte graphique qui pilote l'écran.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gpu: Option<String>,
+    /// Chemin physique de la sortie (USB-C, Thunderbolt...), si le pilote le dit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport: Option<DisplayTransport>,
+    /// Lien DisplayPort négocié, lu auprès du pilote graphique.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<DpLink>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DisplayTransport {
+    /// Port vidéo classique (DP, HDMI).
+    Native,
+    /// Port USB-C en mode alternatif DisplayPort.
+    UsbC,
+    Thunderbolt,
+    Usb4,
+}
+
+impl DisplayTransport {
+    pub fn label(self) -> &'static str {
+        match self {
+            DisplayTransport::Native => "port vidéo natif",
+            DisplayTransport::UsbC => "port USB-C (mode alternatif DisplayPort)",
+            DisplayTransport::Thunderbolt => "Thunderbolt",
+            DisplayTransport::Usb4 => "USB4",
+        }
+    }
+}
+
+/// Lien DisplayPort : débit par voie et nombre de voies.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DpLink {
+    /// Débit par voie actuel, en Mb/s (1620 RBR, 2700 HBR, 5400 HBR2, 8100 HBR3).
+    pub lane_rate_mbps: u32,
+    pub lanes: u8,
+    /// Maximum annoncé (écran, ou écran et carte graphique selon la source).
+    pub max_lane_rate_mbps: Option<u32>,
+    pub max_lanes: Option<u8>,
+    /// D'où vient l'information ("Intel IGCL", "NVIDIA NVAPI").
+    pub source: String,
+}
+
+impl DpLink {
+    /// Débit utile en Gb/s (codage 8b/10b des débits RBR à HBR3).
+    pub fn capacity_gbps(&self) -> f64 {
+        f64::from(self.lane_rate_mbps) * f64::from(self.lanes) * 0.8 / 1000.0
+    }
+
+    pub fn rate_name(mbps: u32) -> &'static str {
+        match mbps {
+            1620 => "RBR",
+            2700 => "HBR",
+            5400 => "HBR2",
+            8100 => "HBR3",
+            _ => "débit eDP",
+        }
+    }
+
+    /// "4 voies HBR2 (17,3 Gb/s)".
+    pub fn label(&self) -> String {
+        format!(
+            "{} voie{} {} ({:.1} Gb/s)",
+            self.lanes,
+            if self.lanes > 1 { "s" } else { "" },
+            Self::rate_name(self.lane_rate_mbps),
+            self.capacity_gbps()
+        )
+        .replace('.', ",")
+    }
 }
 
 impl Display {

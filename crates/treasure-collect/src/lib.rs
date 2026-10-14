@@ -10,6 +10,8 @@ pub mod linux;
 pub mod windows;
 #[cfg(windows)]
 mod windows_display;
+#[cfg(windows)]
+mod windows_gpu;
 
 use treasure_model::{HostInfo, Report, SCHEMA_VERSION, ToolInfo};
 

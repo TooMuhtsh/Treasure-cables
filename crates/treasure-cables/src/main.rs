@@ -240,6 +240,23 @@ fn print_displays(report: &Report) {
                 ""
             };
             println!("  {name} : {connection}, {mode}{native}{mirrored}");
+            if let Some(t) = d.transport {
+                println!("    sortie : {}", t.label());
+            }
+            if let Some(link) = &d.link {
+                let max = match (link.max_lanes, link.max_lane_rate_mbps) {
+                    (Some(l), Some(r)) => format!(
+                        " ; maximum : {l} voie{} {}",
+                        if l > 1 { "s" } else { "" },
+                        treasure_model::DpLink::rate_name(r)
+                    ),
+                    _ => String::new(),
+                };
+                println!("    lien DisplayPort : {}{max}", link.label());
+            }
+            if let Some(gpu) = &d.gpu {
+                println!("    carte graphique : {gpu}");
+            }
         }
     }
     if !report.usb4_routers.is_empty() {

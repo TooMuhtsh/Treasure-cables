@@ -3,38 +3,118 @@
 //! Windows indique le type de liaison (DisplayPort, DisplayPort tunnelisé en
 //! USB4, HDMI...), le mode actuel et le mode natif annoncé par l'écran. Un
 //! écran externe sous son mode natif est un indice de câble, d'adaptateur ou
-//! de dock trop limité. Le débit du lien DisplayPort lui-même n'est exposé que
-//! par les API des fabricants de GPU (non utilisées ici).
+//! de dock trop limité. Le débit du lien DisplayPort lui-même vient des
+//! bibliothèques des pilotes graphiques (voir `windows_gpu`).
 
 use std::mem::size_of;
 use std::ptr::null_mut;
 
 use windows_sys::Win32::Devices::Display::{
-    DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME, DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_PREFERRED_MODE,
-    DISPLAYCONFIG_DEVICE_INFO_HEADER, DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE,
+    DISPLAYCONFIG_ADAPTER_NAME, DISPLAYCONFIG_DEVICE_INFO_GET_ADAPTER_NAME,
+    DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME, DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME,
+    DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_PREFERRED_MODE, DISPLAYCONFIG_DEVICE_INFO_HEADER,
+    DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE,
     DISPLAYCONFIG_MODE_INFO_TYPE_TARGET, DISPLAYCONFIG_PATH_INFO, DISPLAYCONFIG_RATIONAL,
-    DISPLAYCONFIG_TARGET_DEVICE_NAME, DISPLAYCONFIG_TARGET_PREFERRED_MODE,
-    DisplayConfigGetDeviceInfo, GetDisplayConfigBufferSizes, QDC_ONLY_ACTIVE_PATHS,
-    QueryDisplayConfig,
+    DISPLAYCONFIG_SOURCE_DEVICE_NAME, DISPLAYCONFIG_TARGET_DEVICE_NAME,
+    DISPLAYCONFIG_TARGET_PREFERRED_MODE, DisplayConfigGetDeviceInfo, GetDisplayConfigBufferSizes,
+    QDC_ONLY_ACTIVE_PATHS, QueryDisplayConfig,
 };
 
 use treasure_model::{Display, DisplayConnection};
+
+use crate::windows_gpu;
 
 pub fn displays() -> Vec<Display> {
     let Some((paths, modes)) = query_active_paths() else {
         return Vec::new();
     };
+    let adapters: Vec<Option<String>> = paths.iter().map(adapter_path).collect();
+    let uses = |vendor: &str| {
+        adapters
+            .iter()
+            .flatten()
+            .any(|a| a.to_ascii_uppercase().contains(vendor))
+    };
+    // Les bibliothèques des pilotes ne sont chargées que si la carte est présente.
+    let intel = if uses("VEN_8086") {
+        windows_gpu::intel_outputs()
+    } else {
+        Default::default()
+    };
+    let nvidia = if uses("VEN_10DE") {
+        windows_gpu::Nvidia::load()
+    } else {
+        None
+    };
+
     let source = |p: &DISPLAYCONFIG_PATH_INFO| {
         let a = p.sourceInfo.adapterId;
         (a.LowPart, a.HighPart, p.sourceInfo.id)
     };
     paths
         .iter()
-        .map(|path| Display {
-            mirrored: paths.iter().filter(|p| source(p) == source(path)).count() > 1,
-            ..display(path, &modes)
+        .zip(&adapters)
+        .map(|(path, adapter)| {
+            let mut display = display(path, &modes);
+            display.mirrored = paths.iter().filter(|p| source(p) == source(path)).count() > 1;
+            let adapter_upper = adapter.as_deref().unwrap_or_default().to_ascii_uppercase();
+            display.gpu = adapter
+                .as_deref()
+                .and_then(crate::windows::interface_description);
+            if display.connection.is_some_and(|c| c.is_external_cable()) {
+                if adapter_upper.contains("VEN_8086")
+                    && let Some(output) = intel.get(&path.targetInfo.id)
+                {
+                    display.transport = output.transport;
+                    display.link = output.link.clone();
+                } else if adapter_upper.contains("VEN_10DE")
+                    && let (Some(nv), Some(gdi)) = (&nvidia, gdi_name(path))
+                {
+                    display.link = nv.dp_link(&gdi);
+                }
+            }
+            display
         })
         .collect()
+}
+
+/// Chemin d'interface de la carte graphique qui porte la cible.
+fn adapter_path(path: &DISPLAYCONFIG_PATH_INFO) -> Option<String> {
+    let mut name = DISPLAYCONFIG_ADAPTER_NAME {
+        header: header(
+            DISPLAYCONFIG_DEVICE_INFO_GET_ADAPTER_NAME,
+            size_of::<DISPLAYCONFIG_ADAPTER_NAME>(),
+            path,
+        ),
+        ..Default::default()
+    };
+    // SAFETY: l'en-tête décrit la taille exacte de la structure.
+    if unsafe { DisplayConfigGetDeviceInfo(&mut name.header) } != 0 {
+        return None;
+    }
+    let text = String::from_utf16_lossy(&name.adapterDevicePath);
+    let text = text.trim_end_matches('\0');
+    (!text.is_empty()).then(|| text.to_owned())
+}
+
+/// Nom GDI de la source ("\\.\DISPLAY2"), utilisé par NVAPI.
+fn gdi_name(path: &DISPLAYCONFIG_PATH_INFO) -> Option<String> {
+    let mut name = DISPLAYCONFIG_SOURCE_DEVICE_NAME {
+        header: DISPLAYCONFIG_DEVICE_INFO_HEADER {
+            r#type: DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME,
+            size: size_of::<DISPLAYCONFIG_SOURCE_DEVICE_NAME>() as u32,
+            adapterId: path.sourceInfo.adapterId,
+            id: path.sourceInfo.id,
+        },
+        ..Default::default()
+    };
+    // SAFETY: l'en-tête décrit la taille exacte de la structure.
+    if unsafe { DisplayConfigGetDeviceInfo(&mut name.header) } != 0 {
+        return None;
+    }
+    let text = String::from_utf16_lossy(&name.viewGdiDeviceName);
+    let text = text.trim_end_matches('\0');
+    (!text.is_empty()).then(|| text.to_owned())
 }
 
 fn query_active_paths() -> Option<(Vec<DISPLAYCONFIG_PATH_INFO>, Vec<DISPLAYCONFIG_MODE_INFO>)> {
