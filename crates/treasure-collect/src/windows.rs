@@ -27,7 +27,7 @@ use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
     CM_GETIDLIST_FILTER_PRESENT, CM_Get_DevNode_PropertyW, CM_Get_DevNode_Status,
     CM_Get_Device_ID_List_SizeW, CM_Get_Device_ID_ListW, CM_Get_Device_Interface_List_SizeW,
     CM_Get_Device_Interface_ListW, CM_Get_Device_Interface_PropertyW, CM_LOCATE_DEVNODE_NORMAL,
-    CM_Locate_DevNodeW, CR_SUCCESS, DN_HAS_PROBLEM,
+    CM_Locate_DevNodeW, CR_SUCCESS, DN_HAS_PROBLEM, DN_STARTED,
 };
 use windows_sys::Win32::Devices::Properties::{
     DEVPKEY_Device_Address, DEVPKEY_Device_BusNumber, DEVPKEY_Device_BusReportedDeviceDesc,
@@ -860,6 +860,7 @@ pub(crate) fn usb_network_functions() -> Vec<crate::network::UsbNetFunction> {
                 kind,
                 problem: devnode_problem(devinst),
                 driver: devnode_string(devinst, &DEVPKEY_Device_Service),
+                started: devnode_started(devinst),
             })
         })
         .collect()
@@ -945,6 +946,14 @@ fn devnode_string(devinst: u32, key: &DEVPROPKEY) -> Option<String> {
     let text = from_wide_bytes(&devnode_property(devinst, key)?);
     let text = text.trim();
     (!text.is_empty()).then(|| text.to_owned())
+}
+
+fn devnode_started(devinst: u32) -> bool {
+    let mut status = 0u32;
+    let mut problem = 0u32;
+    // SAFETY: pointeurs valides.
+    let r = unsafe { CM_Get_DevNode_Status(&mut status, &mut problem, devinst, 0) };
+    r == CR_SUCCESS && status & DN_STARTED != 0
 }
 
 fn devnode_problem(devinst: u32) -> Option<u32> {

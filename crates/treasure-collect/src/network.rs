@@ -33,8 +33,10 @@ pub struct UsbNetFunction {
     pub kind: &'static str,
     /// Code de problème du gestionnaire de périphériques (28 : pas de pilote).
     pub problem: Option<u32>,
-    /// Service du pilote installé ("usb_rndis", "UsbNcm").
+    /// Service du pilote installé ("usbrndis6", "UsbNcm").
     pub driver: Option<String>,
+    /// Le pilote a démarré (sinon, aucune carte réseau n'existe encore).
+    pub started: bool,
 }
 
 /// Reconnaît une fonction réseau USB d'après ses identifiants compatibles.

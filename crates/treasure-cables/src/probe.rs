@@ -432,11 +432,17 @@ fn no_tether_adapter(
             ),
             None,
         ),
-        // Une carte désactivée dans les connexions réseau n'apparaît plus du
-        // tout parmi les cartes : c'est le cas le plus probable.
+        (None, Some(_)) if !function.started => (
+            format!(
+                "Le téléphone propose son partage de connexion (« {name} », {kind}) et Windows a son pilote, mais le périphérique n'a pas démarré : aucune carte réseau n'existe. Remettez-le à zéro : Gestionnaire de périphériques, Affichage, Afficher les périphériques cachés ; dans Cartes réseau, désinstallez chaque « Remote NDIS based Internet Sharing Device » (sans supprimer le pilote) ; puis débranchez le téléphone, coupez et réactivez le partage USB, et rebranchez."
+            ),
+            None,
+        ),
+        // Pilote démarré mais aucune carte visible : carte désactivée (les
+        // cartes désactivées n'apparaissent plus du tout parmi les cartes).
         (None, Some(_)) => (
             format!(
-                "Le téléphone propose son partage de connexion (« {name} », {kind}) et Windows a son pilote, mais la carte réseau correspondante est invisible : elle est très probablement désactivée. Ouvrez les connexions réseau et activez la carte « Remote NDIS… » (clic droit, Activer). Si elle refuse ou se désactive d'elle-même, une règle de l'entreprise bloque sans doute le partage de connexion sur ce PC."
+                "Le téléphone propose son partage de connexion (« {name} », {kind}) et son pilote a démarré, mais la carte réseau correspondante est invisible : elle est sans doute désactivée. Ouvrez les connexions réseau et activez la carte « Remote NDIS… » (clic droit, Activer). Si elle reste « non présente » ou désactivée, désinstallez-la dans le Gestionnaire de périphériques (Afficher les périphériques cachés), puis débranchez et rebranchez le téléphone."
             ),
             Some("network_connections"),
         ),
