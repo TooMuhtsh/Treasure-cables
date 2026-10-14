@@ -64,17 +64,26 @@
   let alerts = $derived(p ? p.summary.problems + p.summary.warnings : 0);
 
   function notify(text: string, tone = 'info') {
-    snack = { text: text.charAt(0).toUpperCase() + text.slice(1), tone };
+    // Un bandeau reste court : le détail complet est affiché là où il sert.
+    const short = text.length > 220 ? `${text.slice(0, 217).trimEnd()}…` : text;
+    snack = { text: short.charAt(0).toUpperCase() + short.slice(1), tone };
     clearTimeout(snackTimer);
     snackTimer = setTimeout(() => (snack = null), 6000);
   }
 
   /** Applique une réponse du serveur, et ses éventuels messages. */
+  /** Le test avec le téléphone vient de s'arrêter sans verdict. */
+  function phoneFailed(next: State) {
+    return phoneStep === 'running' && !next.probe && next.cable_results.length <= phoneResultsBefore;
+  }
+
   function apply(next: State) {
     st = next;
     if (next.message?.level === 'elevation') elevationAsked = true;
     else if (next.message?.level === 'ok' && next.message.text.includes('administrateur')) handedOff = true;
-    else if (next.message) notify(next.message.text, next.message.level === 'error' ? 'error' : 'ok');
+    // L'échec du test avec le téléphone s'affiche dans l'assistant, pas en bandeau.
+    else if (next.message && !(phoneFailed(next) && next.message.level === 'error'))
+      notify(next.message.text, next.message.level === 'error' ? 'error' : 'ok');
     // Le test s'est terminé côté serveur (appareil détecté ou délai écoulé).
     if (cableStep === 'watch' && !next.cable) cableStep = 'verdict';
     // Test avec le téléphone terminé : verdict, ou retour au départ (l'erreur
