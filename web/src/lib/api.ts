@@ -130,7 +130,7 @@ export interface CableVerdict {
 export type Tone = 'good' | 'fair' | 'bad' | 'unknown';
 
 export interface Score {
-  criterion: 'transfer' | 'charge' | 'overall';
+  criterion: 'transfer' | 'charge' | 'contacts' | 'overall';
   rating: string;
   tone: Tone;
   value?: string;
@@ -139,6 +139,7 @@ export interface Score {
 export const criterionLabel: Record<Score['criterion'], string> = {
   transfer: 'Transfert',
   charge: 'Charge',
+  contacts: 'Contacts',
   overall: 'Général',
 };
 
@@ -148,13 +149,16 @@ export type CableStep = 'closed' | 'intro' | 'watch' | 'verdict';
 export type PhoneStep = 'closed' | 'intro' | 'running' | 'verdict';
 
 export interface ProbeProgress {
-  phase: 'searching' | 'approval' | 'measuring';
+  /** `contacts` : l'utilisateur plie le câble (test des faux contacts). */
+  phase: 'searching' | 'approval' | 'measuring' | 'contacts';
   text: string;
   probe: string | null;
   /** Ce que voit la recherche du téléphone. */
   detail: string | null;
   /** Action proposée : ouvrir les connexions réseau de Windows. */
   action: 'network_connections' | null;
+  /** Secondes restantes de l'étape en cours. */
+  countdown: number | null;
 }
 
 export type Theme = 'auto' | 'light' | 'dark';
@@ -210,7 +214,8 @@ export const api = {
   deepStart: () => call('POST', 'deep/start'),
   deepFinish: () => call('POST', 'deep/finish'),
   elevate: () => call('POST', 'elevate'),
-  probeStart: () => call('POST', 'probe/start'),
+  /** `contacts` : ajoute le test des faux contacts. */
+  probeStart: (contacts: boolean) => call('POST', contacts ? 'probe/start-contacts' : 'probe/start'),
   probeCancel: () => call('POST', 'probe/cancel'),
   openNetworkConnections: () => call('POST', 'open/network-connections'),
   setTheme: (theme: Theme) => call('POST', `theme/${theme}`),

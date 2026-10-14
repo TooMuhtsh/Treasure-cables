@@ -25,6 +25,7 @@ import phone from '@material-symbols/svg-400/outlined/mobile.svg?raw';
 import themeAuto from '@material-symbols/svg-400/outlined/brightness_auto.svg?raw';
 import themeLight from '@material-symbols/svg-400/outlined/light_mode.svg?raw';
 import themeDark from '@material-symbols/svg-400/outlined/dark_mode.svg?raw';
+import hand from '@material-symbols/svg-400/outlined/back_hand.svg?raw';
 
 export const icons = {
   usb,
@@ -52,6 +53,7 @@ export const icons = {
   themeAuto,
   themeLight,
   themeDark,
+  hand,
 };
 
 export type IconName = keyof typeof icons;

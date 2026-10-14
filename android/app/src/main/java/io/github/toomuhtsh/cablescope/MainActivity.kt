@@ -27,6 +27,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -109,10 +111,19 @@ fun ProbeScreen(model: ProbeViewModel = viewModel()) {
         ) {
             StatusCard(state, onOpenSettings = { model.openTetherSettings(context) })
             state.verdict?.let { VerdictCard(it) }
+            if (state.computer == null) {
+                state.localTest?.let { LocalTestCard(it, onCancel = model::cancelLocal) }
+                    ?: LocalTestsCard(state, onCharge = model::startCharge, onContacts = model::startContacts)
+                state.localVerdict?.let { VerdictCard(it, onClose = model::dismissLocal) }
+            }
+            if (state.chargeHistory.isNotEmpty()) {
+                ChargeHistoryCard(state.chargeHistory, onClear = model::clearChargeHistory)
+            }
             state.battery?.let { BatteryCard(it, computer = state.usbConnected) }
             Text(
-                "CableScope Probe sert de testeur au logiciel CableScope : l'ordinateur fait passer des données " +
-                    "par le câble dans les deux sens, et le téléphone rapporte la charge qu'il reçoit.",
+                "Avec le logiciel CableScope, l'ordinateur fait passer des données par le câble dans les deux sens " +
+                    "et le téléphone rapporte la charge qu'il reçoit. Sans ordinateur, le téléphone mesure seul la " +
+                    "charge et repère les faux contacts.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -146,7 +157,11 @@ private fun StatusCard(state: UiState, onOpenSettings: () -> Unit) {
             when {
                 state.computer != null -> {
                     Title("Test en cours avec « ${state.computer} »")
-                    Text(state.status ?: "En attente de l'ordinateur…")
+                    Text(
+                        state.status ?: "En attente de l'ordinateur…",
+                        style = if (state.watchCuts != null) MaterialTheme.typography.titleLarge else MaterialTheme.typography.bodyLarge,
+                    )
+                    state.watchCuts?.let { CutsLine(it) }
                     if (state.testing) LinearProgressIndicator(Modifier.fillMaxWidth())
                 }
                 state.tetherAddress != null -> {
@@ -191,8 +206,99 @@ private fun StatusCard(state: UiState, onOpenSettings: () -> Unit) {
     }
 }
 
+/** Coupures relevées, en direct, pendant que l'utilisateur plie le câble. */
 @Composable
-private fun VerdictCard(verdict: ProbeEvent.Verdict) {
+private fun CutsLine(cuts: Int) {
+    Text(
+        if (cuts == 0) "Aucune coupure pour l'instant" else "$cuts coupure${if (cuts > 1) "s" else ""} relevée${if (cuts > 1) "s" else ""}",
+        color = if (cuts == 0) Color.Unspecified else MaterialTheme.colorScheme.error,
+        fontWeight = FontWeight.Medium,
+    )
+}
+
+@Composable
+private fun LocalTestsCard(state: UiState, onCharge: () -> Unit, onContacts: () -> Unit) {
+    val plugged = state.battery?.plugged.let { it != null && it != "none" }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Title("Tester sans ordinateur")
+            Text(
+                if (plugged) {
+                    "Le téléphone mesure seul ce que le câble laisse passer, branché sur un chargeur ou un ordinateur."
+                } else {
+                    "Branchez le téléphone sur un chargeur (ou un ordinateur) avec le câble à tester."
+                },
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilledTonalButton(onClick = onCharge, enabled = plugged) { Text("Mesurer la charge") }
+                OutlinedButton(onClick = onContacts, enabled = plugged) { Text("Faux contacts") }
+            }
+            Text(
+                "Charge : 30 s, à comparer entre câbles avec le même chargeur. Faux contacts : 30 s, vous pliez le " +
+                    "câble près de chaque fiche en suivant les consignes ; un bip signale chaque coupure.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            state.localError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        }
+    }
+}
+
+@Composable
+private fun LocalTestCard(test: LocalTest, onCancel: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+    ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                if (test.kind == LocalKind.Charge) "Mesure de la charge" else "Test des faux contacts",
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(test.step, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                if (test.secondsLeft > 0) {
+                    Text("${test.secondsLeft} s", style = MaterialTheme.typography.headlineMedium)
+                }
+            }
+            LinearProgressIndicator(progress = { test.progress }, modifier = Modifier.fillMaxWidth())
+            test.currentUa?.let { ua ->
+                Fact(if (ua >= 0) "Courant entrant" else "Courant sortant", formatAmps(kotlin.math.abs(ua)))
+            }
+            if (test.kind == LocalKind.Contacts) CutsLine(test.cuts)
+            TextButton(onClick = onCancel, contentPadding = PaddingValues(0.dp)) { Text("Annuler") }
+        }
+    }
+}
+
+@Composable
+private fun ChargeHistoryCard(history: List<ChargeResult>, onClear: () -> Unit) {
+    val best = history.maxOf { it.medianUa }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Title("Charges mesurées")
+            history.withIndex().reversed().forEach { (i, r) ->
+                val details = listOfNotNull(
+                    r.levelPercent?.let { "batterie $it %" },
+                    sourceLabel(r.plugged, false).takeIf { r.plugged != null },
+                ).joinToString(" · ")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Mesure ${i + 1}${if (r.medianUa == best) " · la meilleure" else ""}")
+                        if (details.isNotEmpty()) {
+                            Text(details, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Text(formatAmps(r.medianUa), fontWeight = FontWeight.Medium)
+                }
+            }
+            TextButton(onClick = onClear, contentPadding = PaddingValues(0.dp)) { Text("Effacer") }
+        }
+    }
+}
+
+@Composable
+private fun VerdictCard(verdict: ProbeEvent.Verdict, onClose: (() -> Unit)? = null) {
     var details by rememberSaveable(verdict) { mutableStateOf(false) }
     val title = when (verdict.severity) {
         "ok" -> MaterialTheme.colorScheme.primary
@@ -217,6 +323,7 @@ private fun VerdictCard(verdict: ProbeEvent.Verdict) {
             if (details) {
                 verdict.facts.forEach { (label, value) -> Fact(label, value) }
             }
+            onClose?.let { TextButton(onClick = it, contentPadding = PaddingValues(0.dp)) { Text("Fermer") } }
         }
     }
 }
@@ -227,6 +334,7 @@ private fun ScoreRow(score: VerdictScore) {
     val criterion = when (score.criterion) {
         "transfer" -> "Transfert"
         "charge" -> "Charge"
+        "contacts" -> "Contacts"
         "overall" -> "Général"
         else -> score.criterion
     }
@@ -253,31 +361,16 @@ private fun BatteryCard(battery: BatteryReading, computer: Boolean) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Title("Charge")
-            Fact(
-                "Source",
-                when (battery.plugged) {
-                    "usb" -> "port USB d'ordinateur"
-                    // Un port USB-C d'ordinateur qui annonce 1,5 ou 3 A est
-                    // classé « chargeur » par Android.
-                    "ac" -> if (computer) "port USB-C d'ordinateur (charge renforcée)" else "chargeur"
-                    "wireless" -> "sans fil"
-                    "dock" -> "station d'accueil"
-                    "none" -> "non branché"
-                    else -> "inconnue"
-                },
-            )
+            Fact("Source", sourceLabel(battery.plugged, computer))
             battery.currentUa?.let { ua ->
                 val label = if (ua >= 0) "Courant entrant" else "Courant sortant"
-                Fact(label, amps(kotlin.math.abs(ua)))
+                Fact(label, formatAmps(kotlin.math.abs(ua)))
             }
             battery.levelPercent?.let { Fact("Niveau", "$it %") }
             battery.temperatureC?.let { Fact("Température", String.format(Locale.FRANCE, "%.1f °C", it)) }
         }
     }
 }
-
-private fun amps(ua: Long): String =
-    if (ua >= 1_000_000) String.format(Locale.FRANCE, "%.2f A", ua / 1_000_000.0) else "${ua / 1000} mA"
 
 @Composable
 private fun Title(text: String) {

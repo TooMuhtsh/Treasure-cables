@@ -67,8 +67,10 @@ fenêtre (Edge en mode application, Material Design 3, thème clair ou sombre) :
 - **Tester avec mon téléphone** : avec l'application Android **CableScope Probe**, le
   téléphone devient testeur. Le logiciel et l'application dialoguent à travers le
   câble (partage de connexion USB) : vitesse négociée, débit réel dans les deux
-  sens, coupures, erreurs de lien et charge reçue par le téléphone. L'application
-  signale aussi d'elle-même un câble qui charge sans transporter de données.
+  sens, coupures, erreurs de lien et charge reçue par le téléphone. En option, le
+  **test des faux contacts** : vous pliez le câble près de chaque fiche, le PC relève
+  les chutes de débit et le téléphone les coupures de charge. L'application signale
+  aussi d'elle-même un câble qui charge sans transporter de données.
 - **Diagnostic approfondi** (administrateur) : écoute la pile USB pendant que
   vous débranchez et rebranchez ; les erreurs de lien sont la preuve la plus
   directe d'un câble ou d'un connecteur défaillant.
@@ -112,6 +114,15 @@ cargo run --release -p cablescope -- --input rapport.json
 ## CableScope Probe (Android)
 
 L'APK est produit par la CI (artefact `cablescope-probe-apk`) ; Android 8 ou plus récent.
+
+Sans ordinateur, l'application teste aussi seule, branchée sur un chargeur :
+
+- **Mesurer la charge** (30 s) : courant reçu, puissance estimée, note Rapide /
+  Normale / Lente, et comparaison avec les câbles déjà mesurés. Les pièges sont
+  signalés (batterie au-delà de 80 %, téléphone chaud, prise USB simple).
+- **Faux contacts** (30 s) : câble au repos, puis plié près de chaque fiche ; un bip
+  signale chaque coupure, le verdict dit de quel côté le câble lâche.
+
 Pour le compiler :
 
 ```sh

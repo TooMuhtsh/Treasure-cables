@@ -12,7 +12,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use cablescope_audit::cable_test::CableVerdict;
-use cablescope_audit::probe_test::{self, ProbeMeasurements};
+use cablescope_audit::probe_test::{self, ProbeMeasurements, ZoneCheck};
 use cablescope_collect::Options;
 use cablescope_model::Report;
 use serde::Serialize;
@@ -27,13 +27,32 @@ const MEASURE: Duration = Duration::from_secs(4);
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(120);
 const APPROVAL_TIMEOUT: Duration = Duration::from_secs(60);
 const REPLY_TIMEOUT: Duration = Duration::from_secs(10);
+/// Test des faux contacts : le temps de prendre le câble en main, puis de le
+/// plier, pour chaque zone ; le débit est relevé par tranches.
+const GET_READY: Duration = Duration::from_secs(3);
+const BEND: Duration = Duration::from_secs(10);
+const BUCKET: Duration = Duration::from_millis(250);
+/// Une tranche sous cette part du débit normal est une chute de débit.
+const STALL_RATIO: f64 = 0.25;
+/// Zones pliées tour à tour, avec la consigne affichée.
+const ZONES: [(&str, &str); 2] = [
+    (
+        "côté téléphone",
+        "Pliez doucement le câble près de la fiche du téléphone, dans tous les sens.",
+    ),
+    (
+        "côté ordinateur",
+        "Pliez doucement le câble près de la fiche de l'ordinateur, dans tous les sens.",
+    ),
+];
 /// Variable d'environnement qui désigne directement une sonde
 /// ("192.168.42.129" ou "hôte:port"), pour le développement.
 pub const PROBE_ENV: &str = "CABLESCOPE_PROBE";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ProbeProgress {
-    /// `searching`, `approval` ou `measuring`.
+    /// `searching`, `approval`, `measuring` ou `contacts` (l'utilisateur
+    /// plie le câble).
     pub phase: &'static str,
     pub text: String,
     /// Nom de la sonde, une fois connue ("samsung SM-S911B").
@@ -42,6 +61,8 @@ pub struct ProbeProgress {
     pub detail: Option<String>,
     /// Action proposée à l'utilisateur ("network_connections").
     pub action: Option<&'static str>,
+    /// Secondes restantes de l'étape en cours (test des faux contacts).
+    pub countdown: Option<u32>,
 }
 
 pub struct ProbeTest {
@@ -51,17 +72,21 @@ pub struct ProbeTest {
 }
 
 impl ProbeTest {
-    pub fn start(options: &Options) -> Self {
+    /// `contacts` ajoute le test des faux contacts (l'utilisateur plie le
+    /// câble pendant que les mesures tournent).
+    pub fn start(options: &Options, contacts: bool) -> Self {
         let progress = Arc::new(Mutex::new(ProbeProgress {
             phase: "searching",
             text: "Recherche du téléphone…".to_owned(),
             probe: None,
             detail: None,
             action: None,
+            countdown: None,
         }));
         let cancel = Arc::new(AtomicBool::new(false));
         let session = Session {
             options: options.clone(),
+            contacts,
             progress: progress.clone(),
             cancel: cancel.clone(),
         };
@@ -86,6 +111,7 @@ impl ProbeTest {
                 probe: None,
                 detail: None,
                 action: None,
+                countdown: None,
             })
     }
 
@@ -108,6 +134,7 @@ impl ProbeTest {
 
 struct Session {
     options: Options,
+    contacts: bool,
     progress: Arc<Mutex<ProbeProgress>>,
     cancel: Arc<AtomicBool>,
 }
@@ -120,6 +147,13 @@ impl Session {
         if let Ok(mut p) = self.progress.lock() {
             p.phase = phase;
             p.text = text.to_owned();
+            p.countdown = None;
+        }
+    }
+
+    fn set_countdown(&self, seconds: u32) {
+        if let Ok(mut p) = self.progress.lock() {
+            p.countdown = Some(seconds);
         }
     }
 
@@ -214,6 +248,18 @@ impl Session {
             charge.extend(self.battery(&mut control));
         }
 
+        if self.contacts && measures.dropped_during.is_none() {
+            let watch = hello["capabilities"]
+                .as_array()
+                .is_some_and(|c| c.iter().any(|c| c == "watch"));
+            // Débit normal d'une tranche, mesuré câble au repos.
+            let normal = measures
+                .to_computer_mbps
+                .map(|mbps| mbps * 1e6 / 8.0 * BUCKET.as_secs_f64());
+            measures.contacts =
+                self.contacts_test(&mut control, address.ip(), &session, watch, normal)?;
+        }
+
         self.set("measuring", "Analyse du résultat…");
         let link = capture.map(cablescope_collect::DeepCapture::stop);
         let mut report = cablescope_collect::collect(&self.options)
@@ -289,6 +335,71 @@ impl Session {
             p.detail = detail;
             p.action = action;
         }
+    }
+
+    /// Test des faux contacts : pour chaque zone, l'utilisateur plie le câble
+    /// pendant que le téléphone envoie des données en continu. Le PC relève
+    /// les chutes de débit, la sonde les coupures de charge et de liaison.
+    fn contacts_test(
+        &self,
+        control: &mut Control,
+        ip: IpAddr,
+        session: &str,
+        watch: bool,
+        normal: Option<f64>,
+    ) -> Result<Vec<ZoneCheck>, Fail> {
+        let mut zones = Vec::new();
+        for (zone, instruction) in ZONES {
+            self.cancelled()?;
+            let ready = format!("Préparez-vous. {instruction}");
+            self.set("contacts", &ready);
+            let _ = control.send(&json!({"type": "status", "text": ready}));
+            let started = Instant::now();
+            while started.elapsed() < GET_READY {
+                self.cancelled()?;
+                self.set_countdown((GET_READY - started.elapsed()).as_secs() as u32 + 1);
+                std::thread::sleep(Duration::from_millis(200));
+            }
+
+            self.set("contacts", instruction);
+            let _ = control.send(&json!({"type": "status", "text": instruction}));
+            if watch {
+                let _ = control.send(&json!({"type": "watch", "action": "start"}));
+            }
+            let (buckets, dropped) = match stream_buckets(ip, session, BEND, &|left| {
+                self.set_countdown(left);
+            }) {
+                Ok(buckets) => (buckets, false),
+                Err(buckets) => (buckets, true),
+            };
+            let mut check = ZoneCheck {
+                zone: zone.to_owned(),
+                dropped,
+                stalls: stalls(&buckets, normal),
+                ..Default::default()
+            };
+            if watch {
+                let report = control
+                    .send(&json!({"type": "watch", "action": "stop"}))
+                    .and_then(|()| control.expect("watch_report", REPLY_TIMEOUT));
+                match report {
+                    Ok(r) => {
+                        let count = |key: &str| r[key].as_u64().map(|n| n as u32);
+                        check.power_cuts = count("power_cuts");
+                        check.data_cuts = count("data_cuts");
+                        check.charge_drops = count("charge_drops");
+                    }
+                    // Plus de réponse : la liaison a lâché.
+                    Err(_) => check.dropped = true,
+                }
+            }
+            let stop = check.dropped;
+            zones.push(check);
+            if stop {
+                break;
+            }
+        }
+        Ok(zones)
     }
 
     /// Courant de charge en mA, si la sonde le connaît.
@@ -463,12 +574,8 @@ fn no_tether_adapter(
 /// Une mesure de débit sur le port de données ; renvoie des Mb/s. Une erreur
 /// signifie que la liaison a lâché pendant la mesure.
 fn measure(ip: IpAddr, session: &str, direction: &str) -> std::io::Result<f64> {
-    let data_port = std::env::var(PROBE_ENV)
-        .ok()
-        .and_then(|t| t.rsplit_once(':').and_then(|(_, p)| p.parse::<u16>().ok()))
-        .map_or(DATA_PORT, |control| control + 1);
     let mut stream =
-        TcpStream::connect_timeout(&SocketAddr::new(ip, data_port), Duration::from_secs(3))?;
+        TcpStream::connect_timeout(&SocketAddr::new(ip, data_port()), Duration::from_secs(3))?;
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     stream.set_write_timeout(Some(Duration::from_secs(5)))?;
     let header = json!({
@@ -514,6 +621,106 @@ fn measure(ip: IpAddr, session: &str, direction: &str) -> std::io::Result<f64> {
             .ok_or_else(interrupted)?;
         Ok(received as f64 * 8.0 / (elapsed_ms as f64 / 1000.0) / 1e6)
     }
+}
+
+fn data_port() -> u16 {
+    std::env::var(PROBE_ENV)
+        .ok()
+        .and_then(|t| t.rsplit_once(':').and_then(|(_, p)| p.parse::<u16>().ok()))
+        .map_or(DATA_PORT, |control| control + 1)
+}
+
+/// Le téléphone envoie des données pendant `duration` ; renvoie les octets
+/// reçus par tranche de [`BUCKET`]. `Err` (avec les tranches reçues) si la
+/// liaison a lâché. `tick` reçoit les secondes restantes.
+fn stream_buckets(
+    ip: IpAddr,
+    session: &str,
+    duration: Duration,
+    tick: &dyn Fn(u32),
+) -> Result<Vec<u64>, Vec<u64>> {
+    let mut buckets = Vec::new();
+    let Ok(mut stream) =
+        TcpStream::connect_timeout(&SocketAddr::new(ip, data_port()), Duration::from_secs(3))
+    else {
+        return Err(buckets);
+    };
+    let header = json!({
+        "session": session,
+        "direction": "to_computer",
+        "duration_ms": duration.as_millis() as u64,
+    });
+    if stream.write_all(format!("{header}\n").as_bytes()).is_err()
+        || stream.set_read_timeout(Some(BUCKET)).is_err()
+    {
+        return Err(buckets);
+    }
+    let started = Instant::now();
+    let mut last_data = Instant::now();
+    let mut buffer = vec![0u8; 256 * 1024];
+    let mut shown = None;
+    loop {
+        let elapsed = started.elapsed();
+        let left = duration.saturating_sub(elapsed).as_secs() as u32 + 1;
+        if shown != Some(left) {
+            tick(left);
+            shown = Some(left);
+        }
+        let slot = (elapsed.as_millis() / BUCKET.as_millis()) as usize;
+        if buckets.len() <= slot {
+            buckets.resize(slot + 1, 0);
+        }
+        match stream.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(n) => {
+                buckets[slot] += n as u64;
+                last_data = Instant::now();
+            }
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
+                // Plusieurs secondes sans rien : la liaison est perdue.
+                if last_data.elapsed() > Duration::from_secs(5) {
+                    return Err(buckets);
+                }
+            }
+            Err(_) => return Err(buckets),
+        }
+    }
+    // Une fin nettement avant l'heure est une coupure.
+    if started.elapsed() + Duration::from_secs(1) < duration {
+        return Err(buckets);
+    }
+    Ok(buckets)
+}
+
+/// Chutes de débit : suites de tranches sous [`STALL_RATIO`] du débit
+/// normal (mesuré câble au repos, à défaut la médiane des tranches). Les
+/// premières tranches (montée en régime) et la dernière (incomplète) ne
+/// comptent pas.
+fn stalls(buckets: &[u64], normal: Option<f64>) -> u32 {
+    let body = match buckets.len() {
+        0..=3 => return 0,
+        n => &buckets[2..n - 1],
+    };
+    let normal = normal.filter(|n| *n > 0.0).unwrap_or_else(|| {
+        let mut sorted = body.to_vec();
+        sorted.sort_unstable();
+        sorted[sorted.len() / 2] as f64
+    });
+    let mut count = 0;
+    let mut in_stall = false;
+    for &bytes in body {
+        let low = (bytes as f64) < normal * STALL_RATIO;
+        if low && !in_stall {
+            count += 1;
+        }
+        in_stall = low;
+    }
+    count
 }
 
 /// Connexion de contrôle : une ligne de JSON par message.
@@ -603,4 +810,26 @@ fn computer_name() -> String {
         })
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "cet ordinateur".to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stalls_count_dips_once_each() {
+        let normal = Some(1000.0);
+        // Montée en régime et dernière tranche ignorées.
+        assert_eq!(stalls(&[0, 0, 1000, 1000, 1000, 0], normal), 0);
+        // Deux chutes : une de deux tranches, une d'une tranche.
+        let buckets = [0, 500, 1000, 100, 0, 1000, 900, 200, 1000, 300];
+        assert_eq!(stalls(&buckets, normal), 2);
+        assert_eq!(stalls(&[1000, 1000], normal), 0);
+    }
+
+    #[test]
+    fn stalls_fall_back_on_the_median() {
+        let buckets = [0, 0, 800, 800, 50, 800, 800, 0];
+        assert_eq!(stalls(&buckets, None), 1);
+    }
 }

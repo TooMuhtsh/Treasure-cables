@@ -266,8 +266,11 @@ impl App {
             (Method::Post, "/api/cable/finish") => self.finish_cable(),
             (Method::Post, "/api/cable/cancel") => self.cable = None,
             (Method::Post, "/api/cable/clear") => self.cable_results.clear(),
-            (Method::Post, "/api/probe/start") if self.live && self.probe.is_none() => {
-                self.probe = Some(ProbeTest::start(&self.options));
+            (Method::Post, "/api/probe/start" | "/api/probe/start-contacts")
+                if self.live && self.probe.is_none() =>
+            {
+                let contacts = path.ends_with("-contacts");
+                self.probe = Some(ProbeTest::start(&self.options, contacts));
             }
             (Method::Post, "/api/probe/cancel") => {
                 if let Some(probe) = self.probe.take() {

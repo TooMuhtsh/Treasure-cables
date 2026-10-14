@@ -19,12 +19,14 @@
     error: string | null;
     action: string | null;
     onaction: () => void;
-    onstart: () => void;
+    /** `contacts` : ajoute le test des faux contacts. */
+    onstart: (contacts: boolean) => void;
     oncancel: () => void;
     onclose: () => void;
   } = $props();
 
   let last = $derived(st.cable_results.at(-1));
+  let contacts = $state(false);
 
   function closed() {
     if (step === 'running') oncancel();
@@ -54,10 +56,25 @@
         <li>Branchez le téléphone à l'ordinateur <strong>avec le câble à tester</strong>.</li>
         <li>Activez le <strong>partage de connexion USB</strong> : l'application vous y emmène.</li>
       </ol>
+      <label class="option" for="contacts-option">
+        <md-checkbox id="contacts-option" checked={contacts} onchange={(e: Event) => (contacts = (e.target as HTMLInputElement).checked)}
+        ></md-checkbox>
+        <span>
+          <strong>Tester aussi les faux contacts</strong> (20 s de plus) : vous pliez le câble près de chaque fiche, en suivant les
+          consignes. Les coupures et les chutes de débit sont relevées des deux côtés.
+        </span>
+      </label>
       <p class="tip">
         <Icon name="cable" size={18} /> Câble USB-C : refaites le test en retournant la fiche côté téléphone. Des fils abîmés ne se
         voient parfois que dans un sens.
       </p>
+    {:else if step === 'running' && st.probe?.phase === 'contacts'}
+      <div class="bend">
+        <Icon name="hand" size={44} />
+        <p class="big">{st.probe.text}</p>
+        {#if st.probe.countdown}<span class="countdown">{st.probe.countdown} s</span>{/if}
+      </div>
+      <p class="muted">La consigne s'affiche aussi sur le téléphone. Pliez sans forcer : le but est de bouger les fils près de la fiche.</p>
     {:else if step === 'running'}
       <div class="watch">
         <md-circular-progress indeterminate></md-circular-progress>
@@ -106,7 +123,7 @@
       <md-text-button onclick={oncancel}>Annuler</md-text-button>
     {:else}
       <md-text-button onclick={onclose}>Fermer</md-text-button>
-      <md-filled-button onclick={onstart}>{step === 'verdict' ? 'Refaire le test' : 'Lancer le test'}</md-filled-button>
+      <md-filled-button onclick={() => onstart(contacts)}>{step === 'verdict' ? 'Refaire le test' : 'Lancer le test'}</md-filled-button>
     {/if}
   </div>
 </md-dialog>
@@ -146,6 +163,35 @@
     align-items: center;
     font-size: 13px;
     color: var(--md-sys-color-on-surface-variant);
+  }
+  .option {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    font-size: 14px;
+    line-height: 1.45;
+    cursor: pointer;
+  }
+  .option md-checkbox {
+    flex: none;
+    margin-top: 2px;
+  }
+  .bend {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 16px;
+    align-items: center;
+    padding: 16px;
+    border-radius: 16px;
+    background: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+  }
+  .bend .big {
+    color: inherit;
+  }
+  .countdown {
+    font: 500 28px/1 var(--md-ref-typeface-brand);
+    font-variant-numeric: tabular-nums;
   }
   .watch {
     display: flex;

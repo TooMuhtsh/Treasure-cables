@@ -108,6 +108,11 @@ class ProbeServer(
                         advice = message.optString("advice").takeIf { it.isNotBlank() && it != "null" },
                     ),
                 )
+                "watch" -> when (message.optString("action")) {
+                    "start" -> host.startWatch()
+                    "stop" -> send(output, watchReport(host.stopWatch()))
+                    else -> send(output, error("unknown_type", "Action inconnue."))
+                }
                 "bye" -> return
                 else -> send(output, error("unknown_type", "Message inconnu."))
             }
@@ -148,8 +153,15 @@ class ProbeServer(
                     .put("model", device.model)
                     .put("android", device.android),
             )
-            .put("capabilities", org.json.JSONArray(listOf("battery", "throughput")))
+            .put("capabilities", org.json.JSONArray(listOf("battery", "throughput", "watch")))
     }
+
+    private fun watchReport(report: WatchReport?): JSONObject = JSONObject()
+        .put("type", "watch_report")
+        .put("power_cuts", report?.powerCuts ?: JSONObject.NULL)
+        .put("data_cuts", report?.dataCuts ?: JSONObject.NULL)
+        .put("charge_drops", report?.chargeDrops ?: JSONObject.NULL)
+        .put("median_current_ua", report?.medianCurrentUa ?: JSONObject.NULL)
 
     private fun battery(): JSONObject {
         val b = host.battery()
@@ -253,6 +265,10 @@ interface ProbeHost {
     fun battery(): BatteryReading
     /** Demande l'accord de l'utilisateur ; bloque jusqu'à sa réponse. */
     fun askApproval(computer: String): Boolean
+    /** Test des faux contacts : surveillance des coupures pendant qu'on plie le câble. */
+    fun startWatch()
+    /** Fin de la surveillance ; `null` si elle n'avait pas commencé. */
+    fun stopWatch(): WatchReport?
     fun onEvent(event: ProbeEvent)
 }
 

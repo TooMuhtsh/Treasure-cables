@@ -184,13 +184,13 @@
     }
   }
 
-  async function startPhone() {
+  async function startPhone(contacts: boolean) {
     phoneResultsBefore = st?.cable_results.length ?? 0;
     phoneError = null;
     phoneAction = null;
     busy = true;
     try {
-      const next = await api.probeStart();
+      const next = await api.probeStart(contacts);
       phoneStep = 'running';
       apply(next);
       poke();

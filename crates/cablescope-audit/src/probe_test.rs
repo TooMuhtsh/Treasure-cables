@@ -26,6 +26,105 @@ pub struct ProbeMeasurements<'a> {
     pub link_errors: u32,
     /// Courant entrant dans la batterie de la sonde, en milliampères.
     pub charge_current_ma: Option<i64>,
+    /// Test des faux contacts, zone par zone (vide s'il n'a pas été fait).
+    pub contacts: Vec<ZoneCheck>,
+}
+
+/// Ce qu'a donné une zone du câble pendant qu'on la pliait.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ZoneCheck {
+    /// Où l'on pliait le câble (« côté téléphone »).
+    pub zone: String,
+    /// La liaison a lâché pendant les manipulations.
+    pub dropped: bool,
+    /// Tranches de 250 ms où le débit s'est effondré.
+    pub stalls: u32,
+    /// Relevés de la sonde, `None` si elle ne sait pas les faire : coupures
+    /// de l'alimentation, de la liaison de données, chutes de charge.
+    pub power_cuts: Option<u32>,
+    pub data_cuts: Option<u32>,
+    pub charge_drops: Option<u32>,
+}
+
+impl ZoneCheck {
+    /// Coupures franches : faux contact.
+    fn cuts(&self) -> u32 {
+        u32::from(self.dropped) + self.power_cuts.unwrap_or(0) + self.data_cuts.unwrap_or(0)
+    }
+
+    /// Faiblesses passagères : câble fragile.
+    fn wobbles(&self) -> u32 {
+        self.stalls + self.charge_drops.unwrap_or(0)
+    }
+
+    fn summary(&self) -> String {
+        if self.dropped {
+            return "liaison coupée".to_owned();
+        }
+        let parts: Vec<String> = [
+            (
+                self.power_cuts.unwrap_or(0),
+                "coupure de charge",
+                "coupures de charge",
+            ),
+            (
+                self.data_cuts.unwrap_or(0),
+                "coupure des données",
+                "coupures des données",
+            ),
+            (self.stalls, "chute de débit", "chutes de débit"),
+            (
+                self.charge_drops.unwrap_or(0),
+                "baisse de charge",
+                "baisses de charge",
+            ),
+        ]
+        .into_iter()
+        .filter(|(n, ..)| *n > 0)
+        .map(|(n, one, many)| format!("{n} {}", if n == 1 { one } else { many }))
+        .collect();
+        if parts.is_empty() {
+            "aucune coupure".to_owned()
+        } else {
+            parts.join(", ")
+        }
+    }
+}
+
+/// État des contacts : les zones en cause, et la gravité.
+enum Contacts<'a> {
+    Solid,
+    Fragile(Vec<&'a str>),
+    Broken(Vec<&'a str>),
+}
+
+fn contacts(zones: &[ZoneCheck]) -> Option<Contacts<'_>> {
+    if zones.is_empty() {
+        return None;
+    }
+    let broken: Vec<&str> = zones
+        .iter()
+        .filter(|z| z.cuts() > 0)
+        .map(|z| z.zone.as_str())
+        .collect();
+    if !broken.is_empty() {
+        return Some(Contacts::Broken(broken));
+    }
+    let fragile: Vec<&str> = zones
+        .iter()
+        .filter(|z| z.wobbles() > 0)
+        .map(|z| z.zone.as_str())
+        .collect();
+    Some(if fragile.is_empty() {
+        Contacts::Solid
+    } else {
+        Contacts::Fragile(fragile)
+    })
+}
+
+/// « côté téléphone et côté ordinateur ».
+fn zones_label(zones: &[&str]) -> String {
+    zones.join(" et ")
 }
 
 /// Retrouve la sonde dans l'arbre USB : Android annonce en USB le même
@@ -79,6 +178,25 @@ pub fn evaluate(m: &ProbeMeasurements) -> CableVerdict {
         return with_scores(v, m);
     }
 
+    // La liaison a lâché pendant qu'on pliait le câble : faux contact.
+    if let Some(zone) = m.contacts.iter().find(|z| z.dropped) {
+        let v = CableVerdict {
+            outcome: Outcome::LinkDropped,
+            severity: Severity::Problem,
+            title: format!("Faux contact {}", zone.zone),
+            detail: format!(
+                "La connexion avec {} a lâché pendant que vous pliiez le câble {} : un fil ou la fiche de ce côté ne tient plus.{measured}",
+                m.probe_name, zone.zone
+            ),
+            device: Some(m.probe_name.clone()),
+            speed: m.device.and_then(|d| d.speed).map(|s| s.value),
+            scores: Vec::new(),
+            facts: Vec::new(),
+            advice: None,
+        };
+        return with_scores(v, m);
+    }
+
     let mut verdict = match m.device {
         Some(device) => {
             let mut v = speed_verdict(device, m.link_errors);
@@ -118,6 +236,28 @@ pub fn evaluate(m: &ProbeMeasurements) -> CableVerdict {
     verdict.detail.push_str(&measured);
     verdict.detail.push_str(&superspeed_sentence(m));
     verdict.detail.push_str(&charge);
+    match contacts(&m.contacts) {
+        Some(Contacts::Broken(zones)) => {
+            let zones = zones_label(&zones);
+            verdict.severity = Severity::Problem;
+            verdict.title = format!("Faux contact {zones}");
+            verdict.detail.push_str(&format!(
+                " Quand on plie le câble {zones}, la charge ou la liaison se coupe : un fil ou la fiche de ce côté ne tient plus."
+            ));
+        }
+        Some(Contacts::Fragile(zones)) => {
+            let zones = zones_label(&zones);
+            verdict.severity = verdict.severity.max(Severity::Warning);
+            verdict.title = format!("Câble fragile {zones}");
+            verdict.detail.push_str(&format!(
+                " Quand on plie le câble {zones}, le débit ou la charge faiblit un instant, sans coupure : le câble commence à fatiguer de ce côté."
+            ));
+        }
+        Some(Contacts::Solid) => verdict.detail.push_str(
+            " Le câble a été plié de chaque côté sans la moindre coupure : ses contacts sont solides.",
+        ),
+        None => {}
+    }
     with_scores(verdict, m)
 }
 
@@ -153,7 +293,43 @@ fn with_scores(mut v: CableVerdict, m: &ProbeMeasurements) -> CableVerdict {
         };
         scores.push(Score::new(Criterion::Charge, rating, tone, Some(value)));
     }
-    let overall = overall_score(&v, &scores);
+    let state = contacts(&m.contacts);
+    if let Some(state) = &state {
+        let (rating, tone, value) = match state {
+            Contacts::Solid => ("Solides", Tone::Good, "aucune coupure".to_owned()),
+            Contacts::Fragile(zones) => (
+                "Fragiles",
+                Tone::Fair,
+                format!("faiblit {}", zones_label(zones)),
+            ),
+            Contacts::Broken(zones) => (
+                "Faux contact",
+                Tone::Bad,
+                format!("coupe {}", zones_label(zones)),
+            ),
+        };
+        scores.push(Score::new(Criterion::Contacts, rating, tone, Some(value)));
+    }
+    let mut overall = overall_score(&v, &scores);
+    match &state {
+        Some(Contacts::Broken(_)) => {
+            overall = Score::new(
+                Criterion::Overall,
+                "À éviter",
+                Tone::Bad,
+                Some("faux contact".to_owned()),
+            );
+        }
+        Some(Contacts::Fragile(_)) if overall.tone == Tone::Good => {
+            overall = Score::new(
+                Criterion::Overall,
+                "À surveiller",
+                Tone::Fair,
+                Some("contacts fragiles".to_owned()),
+            );
+        }
+        _ => {}
+    }
     scores.push(overall);
     v.scores = scores;
 
@@ -186,8 +362,21 @@ fn with_scores(mut v: CableVerdict, m: &ProbeMeasurements) -> CableVerdict {
         };
         facts.push(fact("Charge reçue", value));
     }
+    for zone in &m.contacts {
+        facts.push(fact(&format!("Pliage {}", zone.zone), zone.summary()));
+    }
     v.facts = facts;
-    v.advice = advice(&v, max, m.link_errors);
+    v.advice = match &state {
+        Some(Contacts::Broken(zones)) => Some(format!(
+            "Remplacez ce câble : il coupe quand on le plie {}. Si tous vos câbles coupent du même côté, c'est la prise qui est usée ou encrassée.",
+            zones_label(zones)
+        )),
+        Some(Contacts::Fragile(zones)) => Some(format!(
+            "Ménagez ce câble {} (pas de pliure serrée près de la fiche) et remplacez-le s'il se met à couper.",
+            zones_label(zones)
+        )),
+        _ => advice(&v, max, m.link_errors),
+    };
     v
 }
 
@@ -380,5 +569,137 @@ mod tests {
         assert_eq!(v.severity, Severity::Warning);
         assert!(v.detail.contains("vitesse négociée est inconnue"));
         assert!(v.detail.contains("ne se charge pas"));
+    }
+
+    fn zone(zone: &str) -> ZoneCheck {
+        ZoneCheck {
+            zone: zone.into(),
+            power_cuts: Some(0),
+            data_cuts: Some(0),
+            charge_drops: Some(0),
+            ..Default::default()
+        }
+    }
+
+    fn rating(v: &CableVerdict, criterion: Criterion) -> (String, Tone, String) {
+        let s = v.scores.iter().find(|s| s.criterion == criterion).unwrap();
+        (
+            s.rating.clone(),
+            s.tone,
+            s.value.clone().unwrap_or_default(),
+        )
+    }
+
+    #[test]
+    fn solid_contacts() {
+        let device = phone(Speed::Gen1x1);
+        let m = ProbeMeasurements {
+            contacts: vec![zone("côté téléphone"), zone("côté ordinateur")],
+            ..measures(Some(&device))
+        };
+        let v = evaluate(&m);
+        assert_eq!(v.outcome, Outcome::Ok);
+        assert_eq!(
+            rating(&v, Criterion::Contacts),
+            ("Solides".into(), Tone::Good, "aucune coupure".into())
+        );
+        assert_eq!(rating(&v, Criterion::Overall).0, "Bon câble");
+        assert!(v.detail.contains("contacts sont solides"), "{}", v.detail);
+        assert!(
+            v.facts
+                .iter()
+                .any(|f| f.label == "Pliage côté téléphone" && f.value == "aucune coupure")
+        );
+        // Ordre des pastilles : transfert, charge, contacts, général.
+        let order: Vec<Criterion> = v.scores.iter().map(|s| s.criterion).collect();
+        assert_eq!(
+            order,
+            vec![
+                Criterion::Transfer,
+                Criterion::Charge,
+                Criterion::Contacts,
+                Criterion::Overall
+            ]
+        );
+    }
+
+    #[test]
+    fn fragile_contacts() {
+        let device = phone(Speed::Gen1x1);
+        let m = ProbeMeasurements {
+            contacts: vec![
+                ZoneCheck {
+                    stalls: 2,
+                    ..zone("côté téléphone")
+                },
+                zone("côté ordinateur"),
+            ],
+            ..measures(Some(&device))
+        };
+        let v = evaluate(&m);
+        assert_eq!(v.title, "Câble fragile côté téléphone");
+        assert_eq!(v.severity, Severity::Warning);
+        assert_eq!(
+            rating(&v, Criterion::Contacts),
+            (
+                "Fragiles".into(),
+                Tone::Fair,
+                "faiblit côté téléphone".into()
+            )
+        );
+        assert_eq!(rating(&v, Criterion::Overall).0, "À surveiller");
+        assert!(
+            v.facts
+                .iter()
+                .any(|f| f.label == "Pliage côté téléphone" && f.value == "2 chutes de débit")
+        );
+    }
+
+    #[test]
+    fn power_cut_is_a_bad_contact() {
+        let device = phone(Speed::Gen1x1);
+        let m = ProbeMeasurements {
+            contacts: vec![
+                zone("côté téléphone"),
+                ZoneCheck {
+                    power_cuts: Some(1),
+                    stalls: 1,
+                    ..zone("côté ordinateur")
+                },
+            ],
+            ..measures(Some(&device))
+        };
+        let v = evaluate(&m);
+        assert_eq!(v.title, "Faux contact côté ordinateur");
+        assert_eq!(v.severity, Severity::Problem);
+        assert_eq!(rating(&v, Criterion::Contacts).1, Tone::Bad);
+        assert_eq!(
+            rating(&v, Criterion::Overall),
+            ("À éviter".into(), Tone::Bad, "faux contact".into())
+        );
+        assert!(v.advice.unwrap().starts_with("Remplacez ce câble"));
+        assert!(v.facts.iter().any(|f| f.label == "Pliage côté ordinateur"
+            && f.value == "1 coupure de charge, 1 chute de débit"));
+    }
+
+    #[test]
+    fn link_lost_while_bending() {
+        let device = phone(Speed::Gen1x1);
+        let m = ProbeMeasurements {
+            contacts: vec![ZoneCheck {
+                dropped: true,
+                ..zone("côté téléphone")
+            }],
+            ..measures(Some(&device))
+        };
+        let v = evaluate(&m);
+        assert_eq!(v.outcome, Outcome::LinkDropped);
+        assert_eq!(v.title, "Faux contact côté téléphone");
+        assert_eq!(rating(&v, Criterion::Contacts).0, "Faux contact");
+        assert!(
+            v.facts
+                .iter()
+                .any(|f| f.label == "Pliage côté téléphone" && f.value == "liaison coupée")
+        );
     }
 }

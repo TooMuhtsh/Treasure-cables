@@ -46,7 +46,7 @@ Sonde → logiciel :
 ```json
 {"type":"hello","protocol":1,"probe":"CableScope Probe","version":"0.1.0",
  "device":{"manufacturer":"samsung","model":"SM-S911B","android":"16"},
- "capabilities":["battery","throughput"]}
+ "capabilities":["battery","throughput","watch"]}
 ```
 
 `manufacturer` et `model` sont ceux que l'appareil annonce aussi en USB
@@ -94,7 +94,43 @@ Le logiciel tient la sonde au courant, pour l'affichage :
 {"type":"status","text":"Mesure du débit vers l'ordinateur…"}
 ```
 
-### 5. Verdict
+### 5. Surveillance des coupures (capacité `watch`)
+
+Pour le test des faux contacts, l'utilisateur plie le câble près de chaque
+fiche pendant que le logiciel fait passer des données (port de débit, sens
+`to_computer`) et relève les chutes de débit par tranches de 250 ms. La
+sonde, elle, surveille ce que seul le téléphone voit :
+
+```json
+{"type":"watch","action":"start"}
+```
+
+puis, à la fin de la zone pliée :
+
+```json
+{"type":"watch","action":"stop"}
+```
+
+La sonde répond :
+
+```json
+{"type":"watch_report","power_cuts":0,"data_cuts":0,"charge_drops":1,"median_current_ua":1480000}
+```
+
+- `power_cuts` : coupures de l'alimentation (débranchement vu par le
+  système) ;
+- `data_cuts` : coupures de la liaison de données USB ;
+- `charge_drops` : baisses passagères de la charge (courant tombé sous 20 %
+  de son niveau habituel, ou source renégociée) ; comptées seulement si la
+  batterie se charge franchement (au moins 300 mA) ;
+- chaque champ vaut `null` si la surveillance n'avait pas commencé.
+
+Les consignes (« Pliez doucement le câble près de la fiche du téléphone… »)
+passent par les messages `status`, affichés des deux côtés. Une sonde qui
+n'annonce pas `watch` ne reçoit pas ces messages : seules les chutes de débit
+sont alors relevées.
+
+### 6. Verdict
 
 À la fin, le logiciel transmet son verdict, que la sonde affiche :
 
@@ -109,12 +145,13 @@ pour un affichage bref :
 - `scores` : les notes, une par critère (`transfer`, `charge`, `overall`),
   avec `rating` (« Excellent »), `tone` (`good`, `fair`, `bad`, `unknown`) et
   `value` (« 5 Gb/s · 2,7 Gb/s mesurés ») ;
+- `scores` peut aussi porter le critère `contacts` (test des faux contacts) ;
 - `facts` : le détail rangé, `[{"label":"Débit vers le PC","value":"2,7 Gb/s"}, …]` ;
 - `advice` : le conseil en une phrase, ou `null`.
 
 `detail` reste l'explication complète, en texte.
 
-### 6. Fin
+### 7. Fin
 
 `{"type":"bye"}`, dans un sens ou dans l'autre, puis fermeture.
 

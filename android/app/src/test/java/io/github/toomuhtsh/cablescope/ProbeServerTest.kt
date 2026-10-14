@@ -16,11 +16,16 @@ import java.util.concurrent.CopyOnWriteArrayList
 class ProbeServerTest {
     private val events = CopyOnWriteArrayList<ProbeEvent>()
     private var approve = true
+    @Volatile private var watching = false
     private val host = object : ProbeHost {
         override fun device() = DeviceInfo("samsung", "SM-S911B", "16")
         override fun version() = "test"
         override fun battery() = BatteryReading("usb", true, 64, 1_250_000, 4120, 31.5)
         override fun askApproval(computer: String) = approve
+        override fun startWatch() {
+            watching = true
+        }
+        override fun stopWatch() = if (watching) WatchReport(1, 0, 2, 1_250_000, 40) else null
         override fun onEvent(event: ProbeEvent) {
             events += event
         }
@@ -50,6 +55,7 @@ class ProbeServerTest {
         val hello = client.receive()
         assertEquals("hello", hello.getString("type"))
         assertEquals("SM-S911B", hello.getJSONObject("device").getString("model"))
+        assertTrue(hello.getJSONArray("capabilities").toString().contains("\"watch\""))
         return client.receive()
     }
 
@@ -94,6 +100,15 @@ class ProbeServerTest {
                 val reply = JSONObject(BufferedReader(InputStreamReader(data.getInputStream())).readLine())
                 assertEquals(8L shl 20, reply.getLong("received"))
             }
+
+            // Test des faux contacts : la sonde relève les coupures entre start et stop.
+            client.send("""{"type":"watch","action":"start"}""")
+            client.send("""{"type":"watch","action":"stop"}""")
+            val report = client.receive()
+            assertEquals("watch_report", report.getString("type"))
+            assertEquals(1, report.getInt("power_cuts"))
+            assertEquals(0, report.getInt("data_cuts"))
+            assertEquals(2, report.getInt("charge_drops"))
 
             client.send(
                 """{"type":"verdict","severity":"ok","title":"Câble USB 3","detail":"5 Gb/s",""" +

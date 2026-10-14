@@ -54,10 +54,16 @@
       <strong>Lente</strong> &lt; 0,5 A. Elle dépend aussi de la prise et du niveau de batterie : comparez les câbles dans les mêmes
       conditions.
     </dd>
+    <dt>Contacts</dt>
+    <dd>
+      Le câble plié près de chaque fiche : <strong>Solides</strong> : rien ne bouge · <strong>Fragiles</strong> : le débit ou la
+      charge faiblit un instant · <strong>Faux contact</strong> : la charge ou la liaison se coupe.
+    </dd>
     <dt>Général</dt>
     <dd>
       <strong>Bon câble</strong> : données et charge · <strong>Usage limité</strong> : charge et petits appareils ·
-      <strong>Charge seulement</strong> : pas de données · <strong>À éviter</strong> : liaison défaillante.
+      <strong>À surveiller</strong> : contacts fragiles · <strong>Charge seulement</strong> : pas de données ·
+      <strong>À éviter</strong> : liaison défaillante ou faux contact.
     </dd>
   </dl>
 </details>

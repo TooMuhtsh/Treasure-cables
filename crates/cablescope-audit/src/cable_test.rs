@@ -67,6 +67,8 @@ pub(crate) fn fact(label: &str, value: impl Into<String>) -> VerdictFact {
 pub enum Criterion {
     Transfer,
     Charge,
+    /// Tenue du câble quand on le plie (test des faux contacts).
+    Contacts,
     Overall,
 }
 
