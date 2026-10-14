@@ -47,10 +47,20 @@ USB ni les vitesses de lien (WebUSB ne le permet pas), d'où ce découpage.
 | Plateforme | Collecte |
 |---|---|
 | Linux | ✅ Arbre USB, vitesses négociées et voies, capacités (BOS, Linux 6.6+), ports compagnons USB 2/3, ports USB-C et e-marker des câbles (`/sys/class/typec`) |
-| Windows | 🚧 Prochaine étape : parcours des hubs (voir [la recherche](docs/recherche-sources-windows.md)) |
+| Windows | 🧪 À valider sur matériel réel. Parcours des hubs sans droits administrateur : vitesse réelle, capacités SuperSpeed(Plus), voies, port USB-C et compagnon, BOS et modes alternatifs (Billboard), consommation, codes de problème. Voir [la recherche](docs/recherche-sources-windows.md). |
 | Web | 🔜 Après la version portable |
 
 ## Utilisation
+
+**Windows** : téléchargez `treasure-cables.exe` (artefact `treasure-cables-windows-x64`
+de la CI GitHub Actions) et double-cliquez dessus, ou lancez-le dans un terminal :
+
+```powershell
+.\treasure-cables.exe                        # diagnostic de la machine
+.\treasure-cables.exe --json > rapport.json  # rapport à partager
+```
+
+**Depuis les sources** :
 
 ```sh
 cargo run --release -p treasure-cables                 # diagnostic de la machine

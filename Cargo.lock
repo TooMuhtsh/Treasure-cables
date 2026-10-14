@@ -191,6 +191,7 @@ dependencies = [
  "treasure-audit",
  "treasure-collect",
  "treasure-model",
+ "windows-sys",
 ]
 
 [[package]]
@@ -199,6 +200,7 @@ version = "0.1.0"
 dependencies = [
  "tempfile",
  "treasure-model",
+ "windows-sys",
 ]
 
 [[package]]

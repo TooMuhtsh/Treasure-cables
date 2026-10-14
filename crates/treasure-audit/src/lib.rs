@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use treasure_model::typec::{CableKind, CableSpeed, TypeCPort};
-use treasure_model::{ConnectionProblem, Device, Report, Source};
+use treasure_model::{AltModeState, ConnectionProblem, Device, Report, Source};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -42,6 +42,7 @@ pub fn audit(report: &Report) -> Vec<Finding> {
     for device in report.devices() {
         check_problem(device, &mut findings);
         check_speed(device, &mut findings);
+        check_alt_modes(device, &mut findings);
     }
     for port in &report.typec_ports {
         check_cable(port, &mut findings);
@@ -145,17 +146,24 @@ fn check_speed(device: &Device, out: &mut Vec<Finding>) {
         return;
     }
 
-    // Lien SuperSpeed, mais pas au maximum de l'appareil.
-    let limited_by_port = port_max.is_some_and(|p| p.value <= speed.value);
-    let (confidence, cause) = if limited_by_port {
-        (Confidence::Certain, "Le port est la limite, pas le câble.")
-    } else if port_max.is_some() {
-        (
+    // Lien SuperSpeed, mais pas au maximum de l'appareil. Une capacité de port
+    // seulement déduite n'est qu'une borne basse : on ne l'accuse pas.
+    let (limited_by_port, confidence, cause) = match port_max {
+        Some(p) if p.value > speed.value => (
+            false,
             Confidence::Likely,
             "Le port supporte davantage : le câble est probablement la limite.",
-        )
-    } else {
-        (Confidence::Possible, "En cause : le câble ou le port.")
+        ),
+        Some(p) if p.source != Source::Inferred => (
+            true,
+            Confidence::Certain,
+            "Le port est la limite, pas le câble.",
+        ),
+        _ => (
+            false,
+            Confidence::Possible,
+            "En cause : le câble ou le port.",
+        ),
     };
     out.push(Finding {
         code: "link_below_device_capability",
@@ -173,6 +181,43 @@ fn check_speed(device: &Device, out: &mut Vec<Finding>) {
         ),
         detail: cause.to_owned(),
     });
+}
+
+fn check_alt_modes(device: &Device, out: &mut Vec<Finding>) {
+    let on_usb2_link = device.speed.is_some_and(|s| !s.value.is_superspeed());
+    for mode in &device.alt_modes {
+        let state = match mode.state {
+            AltModeState::Configured => continue,
+            AltModeState::NotAttempted => "n'a pas été tenté",
+            AltModeState::Unsuccessful => "a échoué",
+            AltModeState::Error => "est en erreur",
+        };
+        // Un mode alternatif a besoin des paires rapides du câble : s'il échoue
+        // alors que l'appareil n'a qu'un lien USB 2, le câble est le suspect n°1.
+        let (confidence, cause) = if on_usb2_link {
+            (
+                Confidence::Likely,
+                "L'appareil n'obtient qu'un lien USB 2.0 : le câble ne transporte probablement pas les signaux rapides (câble USB 2.0 ou de charge).",
+            )
+        } else {
+            (
+                Confidence::Possible,
+                "En cause : un câble sans e-marker ou non prévu pour ce mode, ou un port de l'ordinateur qui ne le gère pas.",
+            )
+        };
+        out.push(Finding {
+            code: "alt_mode_not_entered",
+            severity: Severity::Warning,
+            confidence,
+            subject: device.location.clone(),
+            title: format!(
+                "Le mode {} de {} {state}",
+                mode.name(),
+                device.display_name()
+            ),
+            detail: cause.to_owned(),
+        });
+    }
 }
 
 fn check_cable(port: &TypeCPort, out: &mut Vec<Finding>) {
@@ -236,7 +281,9 @@ fn check_cable(port: &TypeCPort, out: &mut Vec<Finding>) {
 mod tests {
     use super::*;
     use treasure_model::typec::{Cable, CableVdo, Partner};
-    use treasure_model::{Bus, HostInfo, PortInfo, SCHEMA_VERSION, Sourced, Speed, ToolInfo};
+    use treasure_model::{
+        AltMode, Bus, HostInfo, PortInfo, SCHEMA_VERSION, Sourced, Speed, ToolInfo,
+    };
 
     fn report_with(device: Device) -> Report {
         Report {
@@ -300,6 +347,31 @@ mod tests {
         let findings = audit(&report_with(ssd(Speed::Gen1x1, Some(Speed::Gen1x1))));
         assert_eq!(findings[0].code, "link_below_device_capability");
         assert_eq!(findings[0].severity, Severity::Info);
+    }
+
+    #[test]
+    fn gen1_link_on_port_with_inferred_capability_is_only_possible() {
+        let mut device = ssd(Speed::Gen1x1, None);
+        device.port = Some(PortInfo {
+            max_speed: Some(Sourced::inferred(Speed::Gen1x1)),
+            ..Default::default()
+        });
+        let findings = audit(&report_with(device));
+        assert_eq!(findings[0].confidence, Confidence::Possible);
+    }
+
+    #[test]
+    fn failed_displayport_on_usb2_link_blames_cable() {
+        let mut device = ssd(Speed::High, None);
+        device.max_speed = None;
+        device.alt_modes = vec![AltMode {
+            svid: 0xff01,
+            state: AltModeState::Unsuccessful,
+        }];
+        let findings = audit(&report_with(device));
+        assert_eq!(findings[0].code, "alt_mode_not_entered");
+        assert_eq!(findings[0].confidence, Confidence::Likely);
+        assert!(findings[0].title.contains("DisplayPort"));
     }
 
     #[test]

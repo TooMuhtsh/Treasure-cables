@@ -11,3 +11,6 @@ serde_json.workspace = true
 treasure-model.workspace = true
 treasure-audit.workspace = true
 treasure-collect.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Console"] }

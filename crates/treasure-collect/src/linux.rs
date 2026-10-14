@@ -107,11 +107,17 @@ fn read_device(usb_dir: &Path, name: &str, dir: &Path, bos_missing: &mut bool) -
     let device_class = read_hex::<u8>(&dir.join("bDeviceClass"));
     let is_hub = device_class == Some(9);
 
-    let max_speed = match fs::read(dir.join("bos_descriptors")) {
-        Ok(data) => bos::parse(&data)
-            .and_then(|b| b.max_speed)
-            .map(Sourced::declared),
-        Err(_) => {
+    let bos = fs::read(dir.join("bos_descriptors"))
+        .ok()
+        .map(|d| bos::parse(&d));
+    let alt_modes = bos
+        .iter()
+        .flatten()
+        .flat_map(|b| b.alt_modes.clone())
+        .collect();
+    let max_speed = match bos {
+        Some(info) => info.and_then(|b| b.max_speed).map(Sourced::declared),
+        None => {
             *bos_missing = true;
             // Sans BOS, un bcdUSB >= 3.0 indique au moins un appareil SuperSpeed.
             // Un appareil USB 3 branché en USB 2 annonce souvent 2.10 : on ne
@@ -151,6 +157,7 @@ fn read_device(usb_dir: &Path, name: &str, dir: &Path, bos_missing: &mut bool) -
         is_hub,
         port: read_port(usb_dir, dir),
         problem: None,
+        alt_modes,
         children: Vec::new(),
     }
 }
@@ -201,7 +208,7 @@ fn read_port(usb_dir: &Path, dir: &Path) -> Option<PortInfo> {
         .flatten()
         .filter_map(hub_speed)
         .max()
-        .map(Sourced::inferred);
+        .map(Sourced::declared);
 
     Some(PortInfo {
         number,
@@ -477,7 +484,7 @@ mod tests {
         let port = ssd.port.as_ref().unwrap();
         assert_eq!(port.number, Some(2));
         assert_eq!(port.companion.as_deref(), Some("usb2-port2"));
-        assert_eq!(port.max_speed, Some(Sourced::inferred(Speed::Gen2x1)));
+        assert_eq!(port.max_speed, Some(Sourced::declared(Speed::Gen2x1)));
     }
 
     #[test]

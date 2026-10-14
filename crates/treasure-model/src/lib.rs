@@ -178,8 +178,45 @@ pub struct Device {
     pub is_hub: bool,
     pub port: Option<PortInfo>,
     pub problem: Option<ConnectionProblem>,
+    /// Modes alternatifs annoncés par un appareil Billboard (BOS 0x0D).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alt_modes: Vec<AltMode>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<Device>,
+}
+
+/// Mode alternatif USB-C (DisplayPort, Thunderbolt, USB4...) tel que décrit
+/// par un descripteur Billboard : l'appareil le publie justement quand la
+/// négociation n'a pas abouti.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AltMode {
+    /// Identifiant du standard (SVID) : 0xFF01 DisplayPort, 0x8087 Thunderbolt, 0xFF00 USB4.
+    pub svid: u16,
+    pub state: AltModeState,
+}
+
+impl AltMode {
+    pub fn name(&self) -> &'static str {
+        match self.svid {
+            0xff00 => "USB4",
+            0xff01 => "DisplayPort",
+            0xff02 => "MHL",
+            0x8087 => "Thunderbolt",
+            _ => "mode alternatif propriétaire",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AltModeState {
+    /// Erreur non précisée.
+    Error,
+    /// Pas tenté, ou quitté.
+    NotAttempted,
+    /// Tenté sans succès.
+    Unsuccessful,
+    Configured,
 }
 
 impl Device {

@@ -25,6 +25,17 @@ jobs:
       - name: Rapport de la machine de CI
         run: cargo run -p treasure-cables -- --json
 
+  windows-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release -p treasure-cables
+      - uses: actions/upload-artifact@v4
+        with:
+          name: treasure-cables-windows-x64
+          path: target/release/treasure-cables.exe
+
   wasm:
     runs-on: ubuntu-latest
     steps:

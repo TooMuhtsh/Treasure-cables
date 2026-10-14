@@ -2,7 +2,7 @@
 //! plateformes : il indique les vitesses que l'appareil *sait* atteindre,
 //! même quand il fonctionne plus lentement.
 
-use treasure_model::Speed;
+use treasure_model::{AltMode, AltModeState, Speed};
 
 const BOS_DESCRIPTOR: u8 = 0x0f;
 const DEVICE_CAPABILITY: u8 = 0x10;
@@ -18,6 +18,7 @@ pub struct BosInfo {
     /// L'appareil expose une capacité Billboard (mode alternatif DisplayPort,
     /// Thunderbolt... non négocié ou en échec).
     pub billboard: bool,
+    pub alt_modes: Vec<AltMode>,
 }
 
 pub fn parse(data: &[u8]) -> Option<BosInfo> {
@@ -44,7 +45,10 @@ pub fn parse(data: &[u8]) -> Option<BosInfo> {
                 CAP_SUPERSPEED_PLUS => {
                     info.max_speed = info.max_speed.max(superspeed_plus_max(cap));
                 }
-                CAP_BILLBOARD => info.billboard = true,
+                CAP_BILLBOARD => {
+                    info.billboard = true;
+                    info.alt_modes = billboard_alt_modes(cap);
+                }
                 _ => {}
             }
         }
@@ -78,6 +82,31 @@ fn superspeed_plus_max(cap: &[u8]) -> Option<Speed> {
         best = best.max(Some(speed));
     }
     best
+}
+
+/// Capacité Billboard (Billboard Device Class 1.2, tableau 3-6) :
+/// bmConfigured (32 octets, 2 bits par mode) à l'offset 8, puis les modes
+/// (wSVID, bAlternateMode, iAlternateModeString) à partir de l'offset 44.
+fn billboard_alt_modes(cap: &[u8]) -> Vec<AltMode> {
+    if cap.len() < 44 {
+        return Vec::new();
+    }
+    let count = usize::from(cap[4]).min(34);
+    (0..count)
+        .filter_map(|i| {
+            let entry = cap.get(44 + i * 4..44 + i * 4 + 4)?;
+            let bits = (cap[8 + i / 4] >> ((i % 4) * 2)) & 0b11;
+            Some(AltMode {
+                svid: u16::from_le_bytes([entry[0], entry[1]]),
+                state: match bits {
+                    0 => AltModeState::Error,
+                    1 => AltModeState::NotAttempted,
+                    2 => AltModeState::Unsuccessful,
+                    _ => AltModeState::Configured,
+                },
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -124,6 +153,32 @@ mod tests {
     fn billboard_is_detected() {
         let billboard = [4u8, 0x10, 0x0d, 0];
         assert!(parse(&bos(&[&billboard])).unwrap().billboard);
+    }
+
+    #[test]
+    fn billboard_alt_modes_are_decoded() {
+        // Deux modes : DisplayPort en échec (2), Thunderbolt réussi (3).
+        let mut cap = vec![52u8, 0x10, 0x0d, 0, 2, 0, 0, 0];
+        let mut configured = [0u8; 32];
+        configured[0] = 0b11_10;
+        cap.extend_from_slice(&configured);
+        cap.extend_from_slice(&[0x21, 0x01, 0, 0]); // bcdVersion, failure info, réservé
+        cap.extend_from_slice(&[0x01, 0xff, 0, 0]);
+        cap.extend_from_slice(&[0x87, 0x80, 0, 0]);
+        let info = parse(&bos(&[&cap])).unwrap();
+        assert_eq!(
+            info.alt_modes,
+            vec![
+                AltMode {
+                    svid: 0xff01,
+                    state: AltModeState::Unsuccessful
+                },
+                AltMode {
+                    svid: 0x8087,
+                    state: AltModeState::Configured
+                },
+            ]
+        );
     }
 
     #[test]

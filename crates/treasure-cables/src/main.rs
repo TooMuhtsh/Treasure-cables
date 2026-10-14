@@ -83,7 +83,25 @@ fn main() -> ExitCode {
     for note in &report.notes {
         println!("ℹ {note}");
     }
+    pause_if_double_clicked();
     ExitCode::SUCCESS
+}
+
+/// Lancé par double-clic, Windows ouvre une console qui se refermerait
+/// aussitôt : on attend que l'utilisateur ait lu.
+fn pause_if_double_clicked() {
+    #[cfg(windows)]
+    {
+        let mut processes = [0u32; 2];
+        // SAFETY: tampon de deux entrées, taille passée.
+        let count = unsafe {
+            windows_sys::Win32::System::Console::GetConsoleProcessList(processes.as_mut_ptr(), 2)
+        };
+        if count == 1 {
+            println!("\nAppuyez sur Entrée pour fermer.");
+            let _ = std::io::stdin().read_line(&mut String::new());
+        }
+    }
 }
 
 fn print_tree(report: &Report) {
