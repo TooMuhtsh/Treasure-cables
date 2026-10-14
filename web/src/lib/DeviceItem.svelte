@@ -2,12 +2,13 @@
   import DeviceItem from './DeviceItem.svelte';
   import Icon from './Icon.svelte';
   import { speedRatio, type DeviceView } from './api';
+  import { selection } from './selection.svelte';
 
   let { device }: { device: DeviceView } = $props();
 </script>
 
 <div class="device">
-  <div class="row">
+  <button class="row" title="Voir la fiche complète" onclick={() => (selection.device = device)}>
     <Icon name={device.is_hub ? 'hub' : 'usb'} size={20} />
     <div class="name">
       <span class="title">{device.name}</span>
@@ -22,7 +23,8 @@
         {#if device.verdict === 'below'}<Icon name="warning" size={16} />{/if}
       {/if}
     </span>
-  </div>
+    <Icon name="chevronRight" size={18} />
+  </button>
   {#if device.speed_mbps && !device.is_hub}
     <div class="gauge" title="Échelle logarithmique de 12 Mb/s à 80 Gb/s">
       <div class="fill {device.verdict}" style:width="{speedRatio(device.speed_mbps) * 100}%"></div>
@@ -52,7 +54,20 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    width: 100%;
+    margin: -4px -6px;
+    padding: 4px 6px;
+    box-sizing: content-box;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
     color: var(--md-sys-color-on-surface);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .row:hover {
+    background: var(--md-sys-color-surface-container-highest);
   }
   .name {
     flex: 1;

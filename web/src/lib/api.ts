@@ -22,6 +22,8 @@ export interface DeviceView {
   verdict: SpeedVerdict;
   verdict_label: string | null;
   facts: Fact[];
+  /** Fiche complète, rangée par rubriques. */
+  sections: { title: string; icon: string; facts: Fact[] }[];
   children: DeviceView[];
 }
 

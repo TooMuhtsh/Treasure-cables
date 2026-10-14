@@ -102,7 +102,18 @@ pub struct DeviceView {
     pub verdict_label: Option<String>,
     /// Détails pour la vue experte.
     pub facts: Vec<Fact>,
+    /// Fiche complète, rangée par rubriques (Vitesse, Identité…).
+    pub sections: Vec<FactSection>,
     pub children: Vec<DeviceView>,
+}
+
+/// Une rubrique de la fiche d'un appareil.
+#[derive(Debug, Clone, Serialize)]
+pub struct FactSection {
+    pub title: &'static str,
+    /// Nom d'icône de l'interface ("speed", "usb"…).
+    pub icon: &'static str,
+    pub facts: Vec<Fact>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -430,6 +441,7 @@ fn device_view(device: &Device) -> DeviceView {
         verdict,
         verdict_label,
         facts: facts(device),
+        sections: sections(device),
         children: device.children.iter().map(device_view).collect(),
     }
 }
@@ -504,6 +516,184 @@ fn facts(device: &Device) -> Vec<Fact> {
         });
     }
     facts
+}
+
+/// Fiche complète d'un appareil, rubrique par rubrique ; les rubriques
+/// vides sont omises.
+fn sections(device: &Device) -> Vec<FactSection> {
+    let fact = |label: &'static str, value: String| Fact { label, value };
+    let mut out = Vec::new();
+    let mut push = |title: &'static str, icon: &'static str, facts: Vec<Fact>| {
+        if !facts.is_empty() {
+            out.push(FactSection { title, icon, facts });
+        }
+    };
+
+    // Vitesse : ce qui est obtenu, ce que l'appareil et la prise savent faire.
+    let mut speed = Vec::new();
+    if let Some(s) = device.speed {
+        speed.push(fact("Vitesse obtenue", s.value.label().to_owned()));
+    }
+    if let Some(m) = device.max_speed {
+        speed.push(fact("Maximum de l'appareil", m.value.label().to_owned()));
+    }
+    if let Some(p) = device.port.as_ref().and_then(|p| p.max_speed) {
+        speed.push(fact("Maximum de la prise", capability_label(p)));
+    }
+    if let Some(l) = device.lanes {
+        speed.push(fact(
+            "Voies",
+            format!("{} en réception, {} en émission", l.rx, l.tx),
+        ));
+    }
+    if let (Some(s), Some(m)) = (device.speed, device.max_speed)
+        && !device.is_hub
+    {
+        speed.push(fact(
+            "Bilan",
+            if s.value < m.value {
+                format!(
+                    "peut atteindre {} : le câble ou la prise le ralentit",
+                    m.value.short()
+                )
+            } else {
+                "au maximum de ses capacités".to_owned()
+            },
+        ));
+    }
+    push("Vitesse", "speed", speed);
+
+    // Identité.
+    let mut identity = Vec::new();
+    if let Some(p) = &device.product {
+        identity.push(fact("Produit", p.clone()));
+    }
+    if let Some(m) = &device.manufacturer {
+        identity.push(fact("Fabricant", m.clone()));
+    }
+    if let (Some(v), Some(p)) = (device.vendor_id, device.product_id) {
+        identity.push(fact(
+            "Identifiants",
+            format!("fabricant {v:04x}, produit {p:04x}"),
+        ));
+    }
+    if let Some(c) = device.device_class {
+        identity.push(fact("Type", class_name(c, device.is_hub)));
+    }
+    if let Some(v) = device.usb_version {
+        identity.push(fact("Version USB annoncée", format!("USB {v}")));
+    }
+    if let Some(serial) = &device.serial {
+        identity.push(fact("Numéro de série", serial.clone()));
+    }
+    push("Identité", "devices", identity);
+
+    // Branchement.
+    let mut plug = Vec::new();
+    if let Some(port) = &device.port {
+        if let Some(kind) = match port.connector {
+            Some(Connector::TypeC) => Some("USB-C"),
+            Some(Connector::TypeA) => Some("USB-A"),
+            Some(Connector::Internal) => Some("interne (intégré à la machine)"),
+            _ => None,
+        } {
+            plug.push(fact("Prise", kind.to_owned()));
+        }
+        if let Some(n) = port.number {
+            plug.push(fact("Port du hub", format!("n° {n}")));
+        }
+        if let Some(c) = &port.companion {
+            plug.push(fact("Port jumeau (USB 2 / USB 3)", c.clone()));
+        }
+    }
+    plug.push(fact("Emplacement", device.location.clone()));
+    push("Branchement", "cable", plug);
+
+    // Alimentation.
+    if let Some(ma) = device.max_power_ma {
+        push(
+            "Alimentation",
+            "bolt",
+            vec![fact("Consommation annoncée", format!("{ma} mA au plus"))],
+        );
+    }
+
+    // Modes alternatifs (USB-C : DisplayPort, Thunderbolt…).
+    let modes: Vec<Fact> = device
+        .alt_modes
+        .iter()
+        .map(|mode| {
+            let state = match mode.state {
+                AltModeState::Configured => "actif",
+                AltModeState::NotAttempted => "non tenté",
+                AltModeState::Unsuccessful => "échec",
+                AltModeState::Error => "erreur",
+            };
+            fact(mode.name(), state.to_owned())
+        })
+        .collect();
+    push("Modes alternatifs", "monitor", modes);
+
+    // Hub : ses ports et ce qui y est branché.
+    if device.is_hub {
+        let mut hub = Vec::new();
+        if !device.ports.is_empty() {
+            hub.push(fact("Ports", device.ports.len().to_string()));
+        }
+        hub.push(fact(
+            "Appareils branchés",
+            if device.children.is_empty() {
+                "aucun".to_owned()
+            } else {
+                device
+                    .children
+                    .iter()
+                    .map(|c| c.display_name())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            },
+        ));
+        push("Hub", "hub", hub);
+    }
+
+    if let Some(problem) = device.problem {
+        push(
+            "État",
+            "error",
+            vec![fact("Problème signalé", problem.label().to_owned())],
+        );
+    }
+    out
+}
+
+/// Type d'appareil d'après sa classe USB (0 : défini par chaque interface).
+fn class_name(class: u8, is_hub: bool) -> String {
+    let name = match class {
+        0x00 if is_hub => "hub",
+        0x00 => "composite",
+        0x01 => "audio",
+        0x02 => "communication",
+        0x03 => "clavier, souris…",
+        0x05 => "périphérique physique",
+        0x06 => "appareil photo",
+        0x07 => "imprimante",
+        0x08 => "stockage de masse",
+        0x09 => "hub",
+        0x0a => "données de communication",
+        0x0b => "lecteur de carte à puce",
+        0x0d => "sécurité du contenu",
+        0x0e => "vidéo",
+        0x0f => "santé",
+        0x10 => "audio et vidéo",
+        0x11 => "Billboard USB-C",
+        0xdc => "diagnostic",
+        0xe0 => "sans fil",
+        0xef => "composite",
+        0xfe => "fonction spécifique",
+        0xff => "spécifique au fabricant",
+        _ => return format!("classe {class:02x}"),
+    };
+    format!("{name} (classe {class:02x})")
 }
 
 /// "2-17 · USB-A · USB 3 (5 Gb/s ou plus) · jumeau 2-1".
@@ -618,6 +808,36 @@ mod tests {
             p.findings.iter().all(|f| !f.subject.contains("PC Monitor")),
             "{:?}",
             p.findings
+        );
+    }
+
+    /// La fiche d'un appareil est rangée par rubriques, sans rubrique vide.
+    #[test]
+    fn device_sheet_has_sections() {
+        let json = include_str!("../../../examples/rapport-windows-reel.json");
+        let report: Report = serde_json::from_str(json).unwrap();
+        let p = present(&report);
+        let sandisk = p
+            .plugs
+            .iter()
+            .flat_map(|plug| &plug.devices)
+            .find(|d| d.name.contains("Sandisk"))
+            .unwrap();
+        let titles: Vec<&str> = sandisk.sections.iter().map(|s| s.title).collect();
+        assert_eq!(titles[0], "Vitesse");
+        assert!(titles.contains(&"Identité"));
+        assert!(titles.contains(&"Branchement"));
+        assert!(sandisk.sections.iter().all(|s| !s.facts.is_empty()));
+        let identity = sandisk
+            .sections
+            .iter()
+            .find(|s| s.title == "Identité")
+            .unwrap();
+        assert!(
+            identity
+                .facts
+                .iter()
+                .any(|f| f.label == "Identifiants" && f.value.contains("0781"))
         );
     }
 

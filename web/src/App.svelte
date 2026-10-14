@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import CableWizard from './lib/CableWizard.svelte';
   import DeepDialog from './lib/DeepDialog.svelte';
+  import DeviceDialog from './lib/DeviceDialog.svelte';
   import Details from './lib/Details.svelte';
   import Diagnosis from './lib/Diagnosis.svelte';
   import Displays from './lib/Displays.svelte';
@@ -334,6 +335,7 @@
       onclose={() => (phoneStep = 'closed')}
     />
     <DeepDialog {st} onfinish={finishDeep} />
+    <DeviceDialog />
     <ElevationDialog
       open={elevationAsked}
       onconfirm={() => {
