@@ -12,7 +12,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use treasure_model::{LinkDiagnostics, PortActivity};
+use treasure_model::{Device, LinkDiagnostics, PortActivity, Report};
 
 /// Fournisseur ETW d'où vient un événement.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -198,6 +198,95 @@ impl Analyzer {
     }
 }
 
+/// Complète le bilan d'écoute à l'aide des relevés faits avant et après :
+///
+/// - un port que l'écoute n'a pas pu situer (hub absent du rundown, par
+///   exemple un contrôleur sans aucun appareil au départ) est rattaché à
+///   l'appareil apparu ou disparu sur un port de même numéro, s'il est le
+///   seul candidat ;
+/// - chaque port situé reçoit le nom de son appareil, même débranché depuis.
+pub fn complete(diagnostics: &mut LinkDiagnostics, before: Option<&Report>, after: &Report) {
+    let identity = |d: &Device| (d.location.clone(), d.vendor_id, d.product_id);
+    let before_devices: Vec<&Device> = before.map(|b| b.devices().collect()).unwrap_or_default();
+    let after_devices: Vec<&Device> = after.devices().collect();
+    let changed: Vec<&Device> = after_devices
+        .iter()
+        .filter(|d| !before_devices.iter().any(|b| identity(b) == identity(d)))
+        .chain(
+            before_devices
+                .iter()
+                .filter(|b| !after_devices.iter().any(|d| identity(d) == identity(b))),
+        )
+        .copied()
+        .collect();
+    let all: Vec<&Device> = after_devices
+        .iter()
+        .chain(&before_devices)
+        .copied()
+        .collect();
+    let on_port = |devices: &[&Device], n: u32| -> Vec<String> {
+        let mut locations: Vec<String> = devices
+            .iter()
+            .filter(|d| last_port(&d.location) == Some(n))
+            .map(|d| d.location.clone())
+            .collect();
+        locations.sort();
+        locations.dedup();
+        locations
+    };
+
+    for port in &mut diagnostics.ports {
+        if port.location.is_none()
+            && let Some(n) = port.port
+        {
+            let changed_here = on_port(&changed, n);
+            let candidates = if changed_here.is_empty() {
+                on_port(&all, n)
+            } else {
+                changed_here
+            };
+            if let [only] = candidates.as_slice() {
+                port.location = Some(only.clone());
+            }
+        }
+        if let Some(location) = port.location.as_deref()
+            && port.device_name.is_none()
+            && let Some(device) = all.iter().find(|d| d.location == location)
+        {
+            port.device_name = Some(device.display_name());
+            port.vendor_id = port.vendor_id.or(device.vendor_id);
+            port.product_id = port.product_id.or(device.product_id);
+        }
+    }
+
+    // Deux entrées peuvent désormais désigner le même port : on les fusionne.
+    let mut merged: Vec<PortActivity> = Vec::new();
+    for port in diagnostics.ports.drain(..) {
+        match merged
+            .iter_mut()
+            .find(|m| m.location.is_some() && m.location == port.location)
+        {
+            Some(m) => {
+                m.connections += port.connections;
+                m.enumeration_errors += port.enumeration_errors;
+                m.descriptor_errors += port.descriptor_errors;
+                m.port_errors += port.port_errors;
+                m.transfer_errors += port.transfer_errors;
+                m.hub_resets += port.hub_resets;
+                m.removals += port.removals;
+                m.device_name = m.device_name.take().or(port.device_name);
+            }
+            None => merged.push(port),
+        }
+    }
+    diagnostics.ports = merged;
+}
+
+/// "1-2" -> 2 ; "2-3.4" -> 4.
+fn last_port(location: &str) -> Option<u32> {
+    location.rsplit(['-', '.']).next()?.parse().ok()
+}
+
 /// "2" + port 6 -> "2-6" ; "2-3" + port 1 -> "2-3.1".
 pub(crate) fn child_location(parent: &str, port: u32) -> String {
     if parent.contains('-') {
@@ -320,6 +409,103 @@ mod tests {
         assert_eq!(d.ports[0].port, Some(3));
         assert_eq!(d.ports[0].port_errors, 1);
         assert_eq!(d.controller_errors, 1);
+    }
+
+    fn report_with(devices: Vec<Device>) -> Report {
+        Report {
+            schema_version: treasure_model::SCHEMA_VERSION,
+            tool: treasure_model::ToolInfo {
+                name: "t".into(),
+                version: "0".into(),
+            },
+            host: treasure_model::HostInfo {
+                os: "windows".into(),
+                os_version: None,
+            },
+            generated_at: None,
+            buses: vec![treasure_model::Bus {
+                id: "usb1".into(),
+                controller: None,
+                root_hub: Device {
+                    location: "usb1".into(),
+                    is_hub: true,
+                    children: devices,
+                    ..Default::default()
+                },
+            }],
+            typec_ports: vec![],
+            displays: vec![],
+            usb4_routers: vec![],
+            link_diagnostics: None,
+            notes: vec![],
+        }
+    }
+
+    fn phone(location: &str) -> Device {
+        Device {
+            location: location.into(),
+            product: Some("SAMSUNG_Android".into()),
+            vendor_id: Some(0x04e8),
+            product_id: Some(0x6860),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn unplaced_port_is_matched_to_the_device_that_appeared() {
+        // Cas réel : contrôleur vide au début de l'écoute, téléphone branché
+        // sur son port 2 ; une clé reste branchée sur un autre port 2.
+        let stays = Device {
+            location: "2-2".into(),
+            ..phone("2-2")
+        };
+        let before = report_with(vec![stays.clone()]);
+        let after = report_with(vec![stays, phone("1-2")]);
+        let mut d = LinkDiagnostics {
+            duration_s: 8,
+            ports: vec![PortActivity {
+                port: Some(2),
+                connections: 1,
+                ..Default::default()
+            }],
+            controller_errors: 0,
+        };
+        complete(&mut d, Some(&before), &after);
+        assert_eq!(d.ports[0].location.as_deref(), Some("1-2"));
+        assert_eq!(d.ports[0].device_name.as_deref(), Some("SAMSUNG_Android"));
+    }
+
+    #[test]
+    fn ambiguous_port_is_left_alone_and_duplicates_merge() {
+        let before = report_with(vec![]);
+        let after = report_with(vec![phone("1-2"), phone("2-2")]);
+        let mut d = LinkDiagnostics {
+            duration_s: 8,
+            ports: vec![
+                PortActivity {
+                    port: Some(2),
+                    connections: 1,
+                    ..Default::default()
+                },
+                PortActivity {
+                    location: Some("1-2".into()),
+                    connections: 1,
+                    ..Default::default()
+                },
+                PortActivity {
+                    location: Some("1-2".into()),
+                    port_errors: 2,
+                    ..Default::default()
+                },
+            ],
+            controller_errors: 0,
+        };
+        complete(&mut d, Some(&before), &after);
+        assert_eq!(d.ports.len(), 2);
+        assert_eq!(d.ports[0].location, None);
+        assert_eq!(d.ports[1].connections, 1);
+        assert_eq!(d.ports[1].port_errors, 2);
+        assert_eq!(last_port("2-3.4"), Some(4));
     }
 
     #[test]

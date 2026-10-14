@@ -88,8 +88,11 @@ impl CableWatch {
 
     /// Verdict, et nouveau rapport complet (avec le bilan d'écoute éventuel).
     pub fn finish(self, options: &Options) -> Result<(CableVerdict, Report), String> {
-        let link = self.capture.map(DeepCapture::stop);
+        let mut link = self.capture.map(DeepCapture::stop);
         let mut after = treasure_collect::collect(options).map_err(|e| e.to_string())?;
+        if let Some(link) = &mut link {
+            treasure_collect::deep::complete(link, Some(&self.baseline), &after);
+        }
         let verdict = cable_test::evaluate(&self.baseline, &after, link.as_ref());
         after.link_diagnostics = link;
         Ok((verdict, after))
@@ -105,19 +108,7 @@ pub fn finish_deep(
 ) -> Result<Report, String> {
     let mut diagnostics = capture.stop();
     let mut report = treasure_collect::collect(options).map_err(|e| e.to_string())?;
-    for port in &mut diagnostics.ports {
-        let Some(location) = port.location.as_deref() else {
-            continue;
-        };
-        if port.vendor_id.is_some() || report.devices().any(|d| d.location == location) {
-            continue;
-        }
-        if let Some(device) = before.and_then(|b| b.devices().find(|d| d.location == location)) {
-            port.vendor_id = device.vendor_id;
-            port.product_id = device.product_id;
-            port.device_name = Some(device.display_name());
-        }
-    }
+    treasure_collect::deep::complete(&mut diagnostics, before, &report);
     report.link_diagnostics = Some(diagnostics);
     Ok(report)
 }
