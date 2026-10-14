@@ -112,6 +112,17 @@ class LocalTestsTest {
     }
 
     @Test
+    fun chargeSettlesOnceTheCurrentStopsRising() {
+        // Relevés toutes les 250 ms : 8 par fenêtre de 2 s.
+        val ramp = (0 until 24).map { 2_000_000L + it * 60_000 } // monte encore
+        assertTrue(!chargeSettled(ramp, 250))
+        val flat = List(12) { 2_300_000L } + List(12) { 3_450_000L } + List(16) { 3_460_000L }
+        assertTrue(chargeSettled(flat, 250))
+        assertTrue(!chargeSettled(List(8) { 3_000_000L }, 250)) // moins de 5 s
+        assertTrue(chargeSettled(List(24) { -100_000L }, 250)) // ne se charge pas
+    }
+
+    @Test
     fun historyRoundTrip() {
         val history = listOf(ChargeResult(1, 2_000_000, 40, "ac"), ChargeResult(2, 500_000, null, null))
         assertEquals(history, historyFromJson(historyToJson(history)))

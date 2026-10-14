@@ -171,19 +171,29 @@ class ProbeViewModel(application: Application) : AndroidViewModel(application), 
 
     // --- Tests sans ordinateur ------------------------------------------------
 
-    /** Mesure de la charge : 5 s de mise en route, puis 25 s de relevés. */
+    /**
+     * Mesure de la charge : on attend que le courant cesse de monter (la
+     * charge rapide s'installe en plusieurs secondes), puis 20 s de relevés.
+     */
     fun startCharge() = launchLocal(LocalKind.Charge) {
         val w = newWatch()
         val currents = mutableListOf<Long>()
         val voltages = mutableListOf<Int>()
         val sources = mutableListOf<String>()
-        val plan = Plan(LocalKind.Charge, CHARGE_SETTLE_MS + CHARGE_MEASURE_MS)
-        plan.step("La charge se met en route…", CHARGE_SETTLE_MS, w)
-        val last = plan.step("Mesure du courant de charge…", CHARGE_MEASURE_MS, w) { b ->
+        val rising = mutableListOf<Long>()
+        val plan = Plan(LocalKind.Charge, CHARGE_SETTLE_MAX_MS + CHARGE_MEASURE_MS)
+        plan.step(
+            "La charge se met en route…",
+            CHARGE_SETTLE_MAX_MS,
+            w,
+            sample = { b -> b.currentUa?.let { rising += it } },
+            until = { chargeSettled(rising, SAMPLE_MS) },
+        )
+        val last = plan.step("Mesure du courant de charge…", CHARGE_MEASURE_MS, w, sample = { b ->
             b.currentUa?.let { currents += it }
             b.voltageMv?.let { voltages += it }
             b.plugged?.takeIf { it != "none" }?.let { sources += it }
-        }
+        })
         if (last.plugged == "none") throw LocalTestFailed("Le téléphone a été débranché pendant la mesure.")
         if (currents.isEmpty()) {
             throw LocalTestFailed("Ce téléphone ne donne pas son courant de charge : la mesure est impossible.")
@@ -291,6 +301,8 @@ class ProbeViewModel(application: Application) : AndroidViewModel(application), 
             durationMs: Long,
             w: CableWatch?,
             sample: (BatteryReading) -> Unit = {},
+            /** Fin anticipée de l'étape, vérifiée après chaque relevé. */
+            until: () -> Boolean = { false },
         ): BatteryReading {
             val start = System.currentTimeMillis()
             var last = battery()
@@ -312,6 +324,7 @@ class ProbeViewModel(application: Application) : AndroidViewModel(application), 
                         ),
                     )
                 }
+                if (until()) break
                 delay(SAMPLE_MS)
             }
             doneMs += durationMs
@@ -432,8 +445,8 @@ private const val USB_STATE = "android.hardware.usb.action.USB_STATE"
 private const val HISTORY = "charge_history"
 private const val HISTORY_SIZE = 20
 private const val SAMPLE_MS = 250L
-private const val CHARGE_SETTLE_MS = 5_000L
-private const val CHARGE_MEASURE_MS = 25_000L
+private const val CHARGE_SETTLE_MAX_MS = 20_000L
+private const val CHARGE_MEASURE_MS = 20_000L
 private const val REST_MS = 5_000L
 private const val GET_READY_MS = 3_000L
 private const val BEND_MS = 10_000L

@@ -109,7 +109,11 @@ fun ProbeScreen(model: ProbeViewModel = viewModel()) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            StatusCard(state, onOpenSettings = { model.openTetherSettings(context) })
+            // Pendant un test sans ordinateur, l'état du branchement est
+            // déjà connu : le test passe en tête de l'écran.
+            if (state.localTest == null) {
+                StatusCard(state, onOpenSettings = { model.openTetherSettings(context) })
+            }
             state.verdict?.let { VerdictCard(it) }
             if (state.computer == null) {
                 state.localTest?.let { LocalTestCard(it, onCancel = model::cancelLocal) }
@@ -234,7 +238,7 @@ private fun LocalTestsCard(state: UiState, onCharge: () -> Unit, onContacts: () 
                 OutlinedButton(onClick = onContacts, enabled = plugged) { Text("Faux contacts") }
             }
             Text(
-                "Charge : 30 s, à comparer entre câbles avec le même chargeur. Faux contacts : 30 s, vous pliez le " +
+                "Charge : 25 à 40 s, à comparer entre câbles avec le même chargeur. Faux contacts : 30 s, vous pliez le " +
                     "câble près de chaque fiche en suivant les consignes ; un bip signale chaque coupure.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -261,7 +265,12 @@ private fun LocalTestCard(test: LocalTest, onCancel: () -> Unit) {
                     Text("${test.secondsLeft} s", style = MaterialTheme.typography.headlineMedium)
                 }
             }
-            LinearProgressIndicator(progress = { test.progress }, modifier = Modifier.fillMaxWidth())
+            LinearProgressIndicator(
+                progress = { test.progress },
+                modifier = Modifier.fillMaxWidth(),
+                // La piste par défaut a la couleur de la carte : invisible.
+                trackColor = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.24f),
+            )
             test.currentUa?.let { ua ->
                 Fact(if (ua >= 0) "Courant entrant" else "Courant sortant", formatAmps(kotlin.math.abs(ua)))
             }

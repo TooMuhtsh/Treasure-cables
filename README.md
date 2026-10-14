@@ -117,7 +117,7 @@ L'APK est produit par la CI (artefact `cablescope-probe-apk`) ; Android 8 ou plu
 
 Sans ordinateur, l'application teste aussi seule, branchée sur un chargeur :
 
-- **Mesurer la charge** (30 s) : courant reçu, puissance estimée, note Rapide /
+- **Mesurer la charge** (25 à 40 s) : la mesure attend que la charge rapide soit installée ; courant reçu, puissance estimée, note Rapide /
   Normale / Lente, et comparaison avec les câbles déjà mesurés. Les pièges sont
   signalés (batterie au-delà de 80 %, téléphone chaud, prise USB simple).
 - **Faux contacts** (30 s) : câble au repos, puis plié près de chaque fiche ; un bip

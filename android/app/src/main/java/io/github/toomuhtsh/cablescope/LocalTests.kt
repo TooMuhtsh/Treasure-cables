@@ -49,6 +49,21 @@ data class ZoneResult(val zone: String, val report: WatchReport) {
     }
 }
 
+/**
+ * Le courant de charge s'est stabilisé : la charge rapide monte par paliers
+ * pendant plusieurs secondes après le branchement. Stable quand les 2
+ * dernières secondes ne dépassent plus de 5 % les 2 précédentes (au moins
+ * 5 s de relevés), ou que la batterie ne se charge pas.
+ */
+fun chargeSettled(currents: List<Long>, sampleMs: Long): Boolean {
+    val window = (2_000 / sampleMs).toInt().coerceAtLeast(1)
+    if (currents.size * sampleMs < 5_000 || currents.size < 2 * window) return false
+    val median = { values: List<Long> -> values.sorted()[values.size / 2] }
+    val recent = median(currents.takeLast(window))
+    val before = median(currents.dropLast(window).takeLast(window))
+    return recent <= 0 || recent <= before * 105 / 100
+}
+
 fun chargeRating(ua: Long): Pair<String, String> = when {
     ua >= 1_500_000 -> "Rapide" to "good"
     ua >= 500_000 -> "Normale" to "good"
