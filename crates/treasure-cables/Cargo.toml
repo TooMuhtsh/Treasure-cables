@@ -11,5 +11,11 @@ serde_json.workspace = true
 treasure-model.workspace = true
 treasure-audit.workspace = true
 treasure-collect.workspace = true
+treasure-present.workspace = true
 crossterm = { version = "0.28", default-features = false, features = ["events", "windows"] }
 ratatui = { version = "0.29", default-features = false, features = ["crossterm"] }
+serde = { workspace = true, features = ["derive"] }
+tiny_http = "0.12"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Console", "Win32_UI_WindowsAndMessaging"] }
