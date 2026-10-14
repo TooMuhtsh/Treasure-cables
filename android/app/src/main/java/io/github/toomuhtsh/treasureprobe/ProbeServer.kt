@@ -142,7 +142,11 @@ class ProbeServer(
 
     // --- Débit --------------------------------------------------------------
 
-    private fun serveData(socket: Socket) = socket.use {
+    private fun serveData(socket: Socket) {
+        socket.use { measure(it) }
+    }
+
+    private fun measure(socket: Socket) {
         socket.soTimeout = 10_000
         val input = socket.getInputStream()
         val header = readLine(input) ?: return

@@ -72,7 +72,16 @@ class ProbeServerTest {
                 data.getOutputStream().write(
                     """{"session":"$session","direction":"to_computer","duration_ms":500}""".plus("\n").toByteArray(),
                 )
-                val received = data.getInputStream().readBytes().size
+                // Compté au fil de l'eau : en 500 ms, une boucle locale rapide
+                // transporte plusieurs gigaoctets.
+                val input = data.getInputStream()
+                val buffer = ByteArray(1 shl 16)
+                var received = 0L
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    received += n
+                }
                 assertTrue("reçu $received octets", received > 1_000_000)
             }
             // Débit vers la sonde : elle compte et répond.
