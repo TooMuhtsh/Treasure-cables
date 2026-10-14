@@ -1,0 +1,21 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/treasure-model",
+    "crates/treasure-audit",
+    "crates/treasure-collect",
+    "crates/treasure-cables",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+repository = "https://github.com/TooMuhtsh/Treasure-cables"
+
+[workspace.dependencies]
+treasure-model = { path = "crates/treasure-model" }
+treasure-audit = { path = "crates/treasure-audit" }
+treasure-collect = { path = "crates/treasure-collect" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

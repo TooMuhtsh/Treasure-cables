@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "tool": { "name": "treasure-cables", "version": "0.1.0" },
+  "host": { "os": "linux", "os_version": "Linux 6.12" },
+  "generated_at": 1760400000,
+  "buses": [
+    {
+      "id": "usb1",
+      "controller": "0000:00:14.0",
+      "root_hub": {
+        "location": "usb1", "vendor_id": 7531, "product_id": 2, "manufacturer": null,
+        "product": "xHCI Host Controller", "device_class": 9, "usb_version": 512,
+        "speed": { "value": "high", "source": "negotiated" }, "max_speed": null,
+        "lanes": null, "max_power_ma": 0, "is_hub": true, "port": null, "problem": null,
+        "children": [
+          {
+            "location": "1-2", "vendor_id": 3034, "product_id": 37392, "manufacturer": "Realtek",
+            "product": "SSD NVMe", "device_class": 0, "usb_version": 528,
+            "speed": { "value": "high", "source": "negotiated" },
+            "max_speed": { "value": "gen2x1", "source": "declared" },
+            "lanes": { "rx": 1, "tx": 1 }, "max_power_ma": 896, "is_hub": false,
+            "port": { "number": 2, "connector": "type_c",
+                      "max_speed": { "value": "gen2x1", "source": "inferred" },
+                      "companion": "usb2-port2" },
+            "problem": null
+          }
+        ]
+      }
+    }
+  ],
+  "typec_ports": [
+    {
+      "id": "port0", "data_role": "host", "power_role": "source", "power_operation_mode": "usb_power_delivery",
+      "partner": { "kind": null, "supports_usb_pd": true, "vendor_id": null, "product_id": null },
+      "cable": { "kind": "passive", "plug_type": "type-c", "vendor_id": 11929, "product_id": 1,
+                 "certification_id": 0,
+                 "emarker": { "raw": 32, "highest_speed": "usb2", "max_current_ma": 3000, "max_voltage_v": 20, "epr_capable": false } }
+    }
+  ]
+}

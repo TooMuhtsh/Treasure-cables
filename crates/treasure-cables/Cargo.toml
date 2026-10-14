@@ -1,0 +1,13 @@
+[package]
+name = "treasure-cables"
+description = "Audit des ports, câbles et appareils USB : ce que votre câble limite vraiment"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+treasure-model.workspace = true
+treasure-audit.workspace = true
+treasure-collect.workspace = true
