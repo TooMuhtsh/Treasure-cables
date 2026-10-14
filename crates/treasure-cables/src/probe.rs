@@ -241,7 +241,7 @@ impl Session {
         let started = Instant::now();
         loop {
             self.cancelled()?;
-            let candidates = candidates();
+            let (candidates, adapters) = candidates();
             let mut seen = Vec::new();
             for candidate in &candidates {
                 if candidate.address.ip().is_unspecified() {
@@ -257,7 +257,7 @@ impl Session {
                     Err(_) => {}
                 }
             }
-            let detail = search_detail(&seen);
+            let detail = search_detail(&seen, &adapters);
             self.set_detail(Some(detail.clone()));
             if started.elapsed() > SEARCH_TIMEOUT {
                 return Err(format!(
@@ -291,19 +291,20 @@ struct Candidate {
     label: String,
 }
 
-/// Adresses où chercher une sonde : les passerelles des partages USB
-/// d'abord, puis celles des autres cartes actives, au cas où Windows nomme
-/// la carte du partage autrement que prévu (la poignée de main confirme
-/// qu'il s'agit bien d'une sonde). Une carte de partage sans passerelle est
-/// signalée avec une adresse non spécifiée.
-fn candidates() -> Vec<Candidate> {
+/// Adresses où chercher une sonde : l'autre bout des partages USB d'abord
+/// (passerelle ou serveur DHCP : le téléphone), puis celui des autres cartes
+/// actives, au cas où Windows nomme la carte du partage autrement que prévu
+/// (la poignée de main confirme qu'il s'agit bien d'une sonde). Une carte de
+/// partage sans adresse du téléphone est signalée par une adresse non
+/// spécifiée. Renvoie aussi le résumé des cartes vues, pour le diagnostic.
+fn candidates() -> (Vec<Candidate>, Vec<String>) {
     if let Ok(target) = std::env::var(PROBE_ENV) {
         let target = if target.contains(':') {
             target
         } else {
             format!("{target}:{CONTROL_PORT}")
         };
-        return target
+        let candidates = target
             .to_socket_addrs()
             .map(|a| a.collect::<Vec<_>>())
             .unwrap_or_default()
@@ -314,12 +315,14 @@ fn candidates() -> Vec<Candidate> {
                 label: PROBE_ENV.to_owned(),
             })
             .collect();
+        return (candidates, Vec::new());
     }
     let mut adapters: Vec<_> = treasure_collect::network::adapters()
         .into_iter()
-        .filter(|a| a.up || a.usb_tether)
+        .filter(|a| a.up)
         .collect();
     adapters.sort_by_key(|a| !a.usb_tether);
+    let summaries = adapters.iter().map(|a| a.summary()).collect();
     let mut out: Vec<Candidate> = Vec::new();
     for adapter in adapters {
         let label = if adapter.description.is_empty() {
@@ -327,7 +330,8 @@ fn candidates() -> Vec<Candidate> {
         } else {
             adapter.description.clone()
         };
-        if adapter.usb_tether && adapter.gateways.is_empty() {
+        let peers = adapter.peers();
+        if adapter.usb_tether && peers.is_empty() {
             out.push(Candidate {
                 address: SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), CONTROL_PORT),
                 usb: true,
@@ -335,7 +339,7 @@ fn candidates() -> Vec<Candidate> {
             });
             continue;
         }
-        for ip in adapter.gateways {
+        for ip in peers {
             if !out.iter().any(|c| c.address.ip() == IpAddr::V4(ip)) {
                 out.push(Candidate {
                     address: SocketAddr::new(IpAddr::V4(ip), CONTROL_PORT),
@@ -345,27 +349,34 @@ fn candidates() -> Vec<Candidate> {
             }
         }
     }
-    out
+    (out, summaries)
 }
 
-/// Explique l'état de la recherche, d'après les cartes du partage USB vues.
-fn search_detail(seen: &[(&Candidate, std::io::ErrorKind)]) -> String {
-    let Some((candidate, error)) = seen.first() else {
-        return "L'ordinateur ne voit aucune carte réseau de partage de connexion USB.".to_owned();
+/// Explique l'état de la recherche, d'après les cartes du partage USB vues,
+/// suivi de la liste des cartes actives.
+fn search_detail(seen: &[(&Candidate, std::io::ErrorKind)], adapters: &[String]) -> String {
+    let head = match seen.first() {
+        None => "L'ordinateur ne voit aucune carte réseau de partage de connexion USB.".to_owned(),
+        Some((candidate, error)) => {
+            let label = &candidate.label;
+            let ip = candidate.address.ip();
+            if ip.is_unspecified() {
+                format!("Partage USB vu (« {label} »), mais l'adresse du téléphone est inconnue.")
+            } else if *error == std::io::ErrorKind::ConnectionRefused {
+                format!(
+                    "Partage USB vu (« {label} », téléphone en {ip}), mais l'application ne répond pas : affiche-t-elle « Prêt à tester le câble » ?"
+                )
+            } else {
+                format!(
+                    "Partage USB vu (« {label} », téléphone en {ip}), mais le téléphone ne répond pas."
+                )
+            }
+        }
     };
-    let label = &candidate.label;
-    let ip = candidate.address.ip();
-    if ip.is_unspecified() {
-        return format!(
-            "Partage USB vu (« {label} »), mais le téléphone ne lui a pas encore donné d'adresse."
-        );
-    }
-    if *error == std::io::ErrorKind::ConnectionRefused {
-        format!(
-            "Partage USB vu (« {label} », téléphone en {ip}), mais l'application ne répond pas : affiche-t-elle « Prêt à tester le câble » ?"
-        )
+    if adapters.is_empty() {
+        head
     } else {
-        format!("Partage USB vu (« {label} », téléphone en {ip}), mais le téléphone ne répond pas.")
+        format!("{head} Cartes réseau actives : {}.", adapters.join(" ; "))
     }
 }
 

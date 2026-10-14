@@ -11,19 +11,49 @@ pub struct Adapter {
     /// Description du pilote ("Remote NDIS based Internet Sharing Device").
     pub description: String,
     pub up: bool,
+    /// Adresses IPv4 de la carte.
+    pub addresses: Vec<Ipv4Addr>,
     pub gateways: Vec<Ipv4Addr>,
+    /// Serveur DHCP qui a donné l'adresse : dans un partage de connexion,
+    /// c'est le téléphone (utile quand Windows ne retient pas de passerelle).
+    pub dhcp_server: Option<Ipv4Addr>,
     /// Carte d'un partage de connexion USB (RNDIS ou NCM).
     pub usb_tether: bool,
 }
 
-/// Passerelles des partages de connexion USB actifs : les adresses où
-/// chercher une sonde.
-pub fn usb_tether_gateways() -> Vec<Ipv4Addr> {
-    adapters()
-        .into_iter()
-        .filter(|a| a.up && a.usb_tether)
-        .flat_map(|a| a.gateways)
-        .collect()
+impl Adapter {
+    /// Adresses où peut se trouver l'autre bout de la liaison (le téléphone
+    /// dans un partage de connexion) : passerelles, puis serveur DHCP.
+    pub fn peers(&self) -> Vec<Ipv4Addr> {
+        let mut peers = self.gateways.clone();
+        if let Some(dhcp) = self.dhcp_server
+            && !peers.contains(&dhcp)
+        {
+            peers.push(dhcp);
+        }
+        peers
+    }
+
+    /// Résumé pour le diagnostic : « Ethernet 3 (Remote NDIS…) : active,
+    /// 10.16.21.20, passerelle 10.16.21.154 ».
+    pub fn summary(&self) -> String {
+        let mut parts = vec![if self.up { "active" } else { "inactive" }.to_owned()];
+        if self.addresses.is_empty() {
+            parts.push("sans adresse".to_owned());
+        } else {
+            parts.extend(self.addresses.iter().map(|a| a.to_string()));
+        }
+        parts.extend(self.gateways.iter().map(|g| format!("passerelle {g}")));
+        if let Some(dhcp) = self.dhcp_server {
+            parts.push(format!("DHCP {dhcp}"));
+        }
+        format!(
+            "« {} » ({}) : {}",
+            self.name,
+            self.description,
+            parts.join(", ")
+        )
+    }
 }
 
 /// Reconnaît le pilote d'un partage de connexion USB d'après sa description
@@ -43,7 +73,7 @@ pub fn adapters() -> Vec<Adapter> {
         GAA_FLAG_SKIP_MULTICAST, GetAdaptersAddresses, IP_ADAPTER_ADDRESSES_LH,
     };
     use windows_sys::Win32::NetworkManagement::Ndis::IfOperStatusUp;
-    use windows_sys::Win32::Networking::WinSock::{AF_INET, AF_UNSPEC, SOCKADDR_IN};
+    use windows_sys::Win32::Networking::WinSock::{AF_INET, AF_UNSPEC, SOCKADDR, SOCKADDR_IN};
 
     let flags = GAA_FLAG_INCLUDE_GATEWAYS
         | GAA_FLAG_SKIP_ANYCAST
@@ -80,6 +110,15 @@ pub fn adapters() -> Vec<Adapter> {
         String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(p, len) })
     };
 
+    let ipv4 = |sockaddr: *const SOCKADDR| -> Option<Ipv4Addr> {
+        // SAFETY: adresse fournie par le système, nulle ou valide.
+        let family = unsafe { sockaddr.as_ref() }?.sa_family;
+        (family == AF_INET).then(|| {
+            let sin = unsafe { &*sockaddr.cast::<SOCKADDR_IN>() };
+            Ipv4Addr::from(unsafe { sin.sin_addr.S_un.S_addr }.to_ne_bytes())
+        })
+    };
+
     let mut adapters = Vec::new();
     let mut current = buffer.as_ptr().cast::<IP_ADAPTER_ADDRESSES_LH>();
     // SAFETY: liste chaînée valide tant que `buffer` vit.
@@ -87,13 +126,14 @@ pub fn adapters() -> Vec<Adapter> {
         let mut gateways = Vec::new();
         let mut gateway = a.FirstGatewayAddress;
         while let Some(g) = unsafe { gateway.as_ref() } {
-            let sockaddr = g.Address.lpSockaddr;
-            if !sockaddr.is_null() && unsafe { (*sockaddr).sa_family } == AF_INET {
-                let sin = unsafe { &*sockaddr.cast::<SOCKADDR_IN>() };
-                let raw = unsafe { sin.sin_addr.S_un.S_addr };
-                gateways.push(Ipv4Addr::from(raw.to_ne_bytes()));
-            }
+            gateways.extend(ipv4(g.Address.lpSockaddr));
             gateway = g.Next;
+        }
+        let mut addresses = Vec::new();
+        let mut unicast = a.FirstUnicastAddress;
+        while let Some(u) = unsafe { unicast.as_ref() } {
+            addresses.extend(ipv4(u.Address.lpSockaddr));
+            unicast = u.Next;
         }
         let description = wide(a.Description);
         adapters.push(Adapter {
@@ -101,7 +141,9 @@ pub fn adapters() -> Vec<Adapter> {
             usb_tether: is_usb_tether_description(&description),
             description,
             up: a.OperStatus == IfOperStatusUp,
+            addresses,
             gateways,
+            dhcp_server: ipv4(a.Dhcpv4Server.lpSockaddr).filter(|ip| !ip.is_unspecified()),
         });
         current = a.Next;
     }
@@ -125,7 +167,9 @@ pub fn adapters() -> Vec<Adapter> {
             .unwrap_or_default();
         let up = std::fs::read_to_string(path.join("operstate")).is_ok_and(|s| s.trim() == "up");
         adapters.push(Adapter {
+            addresses: Vec::new(),
             gateways: linux_gateways(&routes, &name),
+            dhcp_server: None,
             usb_tether: matches!(driver.as_str(), "rndis_host" | "cdc_ncm" | "cdc_ether"),
             description: driver,
             name,

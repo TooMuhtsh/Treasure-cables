@@ -5,12 +5,14 @@
   let {
     step,
     st,
+    error,
     onstart,
     oncancel,
     onclose,
   }: {
     step: PhoneStep;
     st: State;
+    error: string | null;
     onstart: () => void;
     oncancel: () => void;
     onclose: () => void;
@@ -28,6 +30,12 @@
   <div slot="headline" class="headline"><Icon name="phone" /> Tester avec mon téléphone</div>
   <div slot="content" class="content">
     {#if step === 'intro'}
+      {#if error}
+        <div class="verdict problem">
+          <Icon name="error" size={28} />
+          <p>{error}</p>
+        </div>
+      {/if}
       <p>
         Le téléphone sert de testeur : l'ordinateur et l'application <strong>Treasure Probe</strong> font passer des données
         par le câble dans les deux sens, et le téléphone mesure la charge qu'il reçoit.

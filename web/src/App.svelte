@@ -19,6 +19,8 @@
   let phoneStep = $state<PhoneStep>('closed');
   /** Nombre de verdicts au lancement du test avec le téléphone. */
   let phoneResultsBefore = 0;
+  /** Échec du dernier test avec le téléphone, gardé affiché dans l'assistant. */
+  let phoneError = $state<string | null>(null);
   let elevationAsked = $state(false);
   let handedOff = $state(false);
   let snack = $state<{ text: string; tone: string } | null>(null);
@@ -76,7 +78,9 @@
     // Test avec le téléphone terminé : verdict, ou retour au départ (l'erreur
     // est annoncée par le message du serveur).
     if (phoneStep === 'running' && !next.probe) {
-      phoneStep = next.cable_results.length > phoneResultsBefore ? 'verdict' : 'intro';
+      const done = next.cable_results.length > phoneResultsBefore;
+      phoneStep = done ? 'verdict' : 'intro';
+      if (!done && next.message?.level === 'error') phoneError = next.message.text;
     }
   }
 
@@ -158,6 +162,7 @@
 
   async function startPhone() {
     phoneResultsBefore = st?.cable_results.length ?? 0;
+    phoneError = null;
     busy = true;
     try {
       const next = await api.probeStart();
@@ -295,6 +300,7 @@
     <PhoneWizard
       step={phoneStep}
       {st}
+      error={phoneError}
       onstart={startPhone}
       oncancel={async () => {
         phoneStep = 'intro';
