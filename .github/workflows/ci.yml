@@ -71,3 +71,22 @@ jobs:
           targets: wasm32-unknown-unknown
       - name: Le modèle et l'audit doivent rester compatibles WebAssembly
         run: cargo check -p treasure-model -p treasure-audit -p treasure-present --target wasm32-unknown-unknown
+
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Tests de la sonde et APK de Treasure Probe
+        run: ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: treasure-probe-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk

@@ -138,12 +138,19 @@ un résultat : la liaison a lâché.
 
 ## Sécurité
 
-- La sonde n'écoute que sur l'interface du partage USB, uniquement quand
-  l'application est ouverte au premier plan.
+- La sonde n'écoute que sur l'interface du partage USB, et seulement tant que
+  l'application est ouverte.
 - Rien ne se passe sans l'accord explicite sur l'écran du téléphone.
 - Le port de débit exige le jeton de session.
 - Aucune donnée personnelle n'est échangée : fabricant, modèle, version
   d'Android et état de la batterie seulement.
+
+## Développement
+
+Le logiciel accepte la variable d'environnement `TREASURE_PROBE`
+(`adresse` ou `adresse:port`) pour joindre une sonde sans partage de connexion,
+par exemple la sonde de développement de l'application
+(`TREASURE_PROBE_SERVE=60 ./gradlew :app:testDebugUnitTest` dans `android/`).
 
 ## Évolution
 

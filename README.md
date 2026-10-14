@@ -37,6 +37,7 @@ crates/
 ├── treasure-collect  collecte : Linux (sysfs, typec), Windows (IOCTL des hubs)
 └── treasure-cables   version portable : fenêtre (serveur local), console, ligne de commande
 web/                  interface Svelte 5 + Material Web (fenêtre de l'application et futur site)
+android/              Treasure Probe : application Android qui sert de sonde (Kotlin, Compose)
 ```
 
 Le futur site web réutilisera la même interface (`web/`) et `treasure-present` compilé en
@@ -61,6 +62,11 @@ fenêtre (Edge en mode application, Material Design 3, thème clair ou sombre) :
 - **Tester un câble** : débranchez l'appareil, branchez-le avec le câble à
   tester ; verdict immédiat (charge seule, limité à l'USB 2.0, défaillant,
   correct) et comparaison des câbles testés.
+- **Tester avec mon téléphone** : avec l'application Android **Treasure Probe**, le
+  téléphone devient testeur. Le logiciel et l'application dialoguent à travers le
+  câble (partage de connexion USB) : vitesse négociée, débit réel dans les deux
+  sens, coupures, erreurs de lien et charge reçue par le téléphone. L'application
+  signale aussi d'elle-même un câble qui charge sans transporter de données.
 - **Diagnostic approfondi** (administrateur) : écoute la pile USB pendant que
   vous débranchez et rebranchez ; les erreurs de lien sont la preuve la plus
   directe d'un câble ou d'un connecteur défaillant.
@@ -96,6 +102,21 @@ cargo run --release -p treasure-cables -- --input rapport.json
 ## Documentation
 
 - [Ce que Windows montre, et ce qu'on peut récupérer qu'il ne montre pas](docs/recherche-sources-windows.md)
+- [Protocole de sonde](docs/protocole-sonde.md) : comment le logiciel et une sonde (l'application
+  Android, ou tout autre appareil) testent un câble ensemble
+
+## Treasure Probe (Android)
+
+L'APK est produit par la CI (artefact `treasure-probe-apk`) ; Android 8 ou plus récent.
+Pour le compiler :
+
+```sh
+cd android
+./gradlew :app:testDebugUnitTest :app:assembleDebug   # SDK Android requis (ANDROID_HOME)
+```
+
+Sans téléphone, `TREASURE_PROBE_SERVE=60 ./gradlew :app:testDebugUnitTest` sert une sonde
+de développement sur 127.0.0.1 ; lancez alors le logiciel avec `TREASURE_PROBE=127.0.0.1`.
 
 ## FAQ
 
