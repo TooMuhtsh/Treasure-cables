@@ -4,6 +4,7 @@
 //! que l'audit et la future version web savent lire.
 
 pub mod bos;
+pub mod deep;
 #[cfg(target_os = "linux")]
 pub mod linux;
 #[cfg(windows)]
@@ -11,7 +12,58 @@ pub mod windows;
 #[cfg(windows)]
 mod windows_display;
 #[cfg(windows)]
+mod windows_etw;
+#[cfg(windows)]
 mod windows_gpu;
+
+#[cfg(windows)]
+pub use windows_etw::{DeepCapture, is_elevated, relaunch_elevated};
+
+/// Démarre le diagnostic approfondi : écoute de la pile USB pendant que
+/// l'utilisateur branche et débranche (droits administrateur).
+#[cfg(windows)]
+pub fn start_deep_capture() -> Result<DeepCapture, Error> {
+    DeepCapture::start(windows::controller_buses())
+}
+
+#[cfg(not(windows))]
+pub use deep_unsupported::{DeepCapture, is_elevated, relaunch_elevated, start_deep_capture};
+
+#[cfg(not(windows))]
+mod deep_unsupported {
+    use treasure_model::LinkDiagnostics;
+
+    use crate::Error;
+
+    const MESSAGE: &str =
+        "le diagnostic approfondi n'est disponible que sous Windows pour l'instant";
+
+    pub struct DeepCapture;
+
+    impl DeepCapture {
+        pub fn events(&self) -> u32 {
+            0
+        }
+        pub fn elapsed_s(&self) -> u32 {
+            0
+        }
+        pub fn stop(self) -> LinkDiagnostics {
+            LinkDiagnostics::default()
+        }
+    }
+
+    pub fn is_elevated() -> bool {
+        false
+    }
+
+    pub fn relaunch_elevated(_arguments: &str) -> Result<(), Error> {
+        Err(Error::Unsupported(MESSAGE))
+    }
+
+    pub fn start_deep_capture() -> Result<DeepCapture, Error> {
+        Err(Error::Unsupported(MESSAGE))
+    }
+}
 
 use treasure_model::{HostInfo, Report, SCHEMA_VERSION, ToolInfo};
 
@@ -32,7 +84,7 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::Io(e) => write!(f, "erreur d'accès au système : {e}"),
-            Error::Unsupported(os) => write!(f, "plateforme non prise en charge : {os}"),
+            Error::Unsupported(message) => f.write_str(message),
         }
     }
 }
@@ -69,7 +121,7 @@ fn platform_collect() -> Result<Report, Error> {
 
 #[cfg(not(any(target_os = "linux", windows)))]
 fn platform_collect() -> Result<Report, Error> {
-    Err(Error::Unsupported(std::env::consts::OS))
+    Err(Error::Unsupported("plateforme non prise en charge"))
 }
 
 pub(crate) fn empty_report(os_version: Option<String>) -> Report {
@@ -88,6 +140,7 @@ pub(crate) fn empty_report(os_version: Option<String>) -> Report {
         typec_ports: Vec::new(),
         displays: Vec::new(),
         usb4_routers: Vec::new(),
+        link_diagnostics: None,
         notes: Vec::new(),
     }
 }

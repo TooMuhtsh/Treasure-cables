@@ -30,6 +30,9 @@ pub struct Report {
     pub displays: Vec<Display>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub usb4_routers: Vec<Usb4Router>,
+    /// Résultat d'une écoute de la pile USB (diagnostic approfondi).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link_diagnostics: Option<LinkDiagnostics>,
     /// Limites rencontrées pendant la collecte (droits, API absentes...).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<String>,
@@ -332,6 +335,43 @@ impl DisplayConnection {
     }
 }
 
+/// Écoute de la pile USB pendant que l'utilisateur branche et débranche :
+/// les erreurs de lien sont la preuve la plus directe d'un câble défaillant.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct LinkDiagnostics {
+    pub duration_s: u32,
+    pub ports: Vec<PortActivity>,
+    /// Réinitialisations ou erreurs internes d'un contrôleur USB.
+    pub controller_errors: u32,
+}
+
+/// Activité observée sur un port pendant l'écoute.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PortActivity {
+    /// Emplacement du port ("2-17"), quand il a pu être déterminé.
+    pub location: Option<String>,
+    pub port: Option<u32>,
+    pub vendor_id: Option<u16>,
+    pub product_id: Option<u16>,
+    /// Appareils reconnus avec succès.
+    pub connections: u32,
+    /// Erreurs pendant la reconnaissance (lecture des descripteurs, adresse...).
+    pub enumeration_errors: u32,
+    /// Descripteurs non conformes : défaut de l'appareil, pas du câble.
+    pub descriptor_errors: u32,
+    pub port_errors: u32,
+    pub transfer_errors: u32,
+    pub hub_resets: u32,
+    pub removals: u32,
+}
+
+impl PortActivity {
+    /// Erreurs qui peuvent venir du câble ou du connecteur.
+    pub fn link_errors(&self) -> u32 {
+        self.enumeration_errors + self.port_errors + self.transfer_errors + self.hub_resets
+    }
+}
+
 /// Routeur USB4 / Thunderbolt (l'hôte, ou un appareil USB4 branché).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Usb4Router {
@@ -455,6 +495,7 @@ mod tests {
             typec_ports: vec![],
             displays: vec![],
             usb4_routers: vec![],
+            link_diagnostics: None,
             notes: vec![],
         };
         report.redact();

@@ -30,9 +30,9 @@ use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
     CM_Locate_DevNodeW, CR_SUCCESS, DN_HAS_PROBLEM,
 };
 use windows_sys::Win32::Devices::Properties::{
-    DEVPKEY_Device_BusReportedDeviceDesc, DEVPKEY_Device_DeviceDesc, DEVPKEY_Device_Driver,
-    DEVPKEY_Device_FriendlyName, DEVPKEY_Device_InstanceId, DEVPKEY_Device_PowerData,
-    DEVPKEY_Device_Service,
+    DEVPKEY_Device_Address, DEVPKEY_Device_BusNumber, DEVPKEY_Device_BusReportedDeviceDesc,
+    DEVPKEY_Device_DeviceDesc, DEVPKEY_Device_Driver, DEVPKEY_Device_FriendlyName,
+    DEVPKEY_Device_InstanceId, DEVPKEY_Device_PowerData, DEVPKEY_Device_Service,
 };
 use windows_sys::Win32::Devices::Usb::{
     GUID_DEVINTERFACE_USB_HOST_CONTROLLER, IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION,
@@ -56,6 +56,7 @@ use treasure_model::{
     Speed, Usb4Router,
 };
 
+use crate::deep::child_location;
 use crate::{Error, bos, empty_report};
 
 /// Absent de windows-sys : `CTL_CODE(FILE_DEVICE_USB, 289, METHOD_BUFFERED, FILE_ANY_ACCESS)`.
@@ -174,15 +175,6 @@ struct Walker<'a> {
     /// Ports déjà comptés, pour ne compter qu'une fois un connecteur dont
     /// les moitiés USB 2 et USB 3 sont sur deux ports (voire deux contrôleurs).
     recorded_ports: HashSet<String>,
-}
-
-/// "2" + port 6 -> "2-6" ; "2-3" + port 1 -> "2-3.1".
-fn child_location(parent: &str, port: u32) -> String {
-    if parent.contains('-') {
-        format!("{parent}.{port}")
-    } else {
-        format!("{parent}-{port}")
-    }
 }
 
 impl Walker<'_> {
@@ -834,6 +826,25 @@ fn locate_devnode(instance_id: &str) -> Option<u32> {
     // SAFETY: identifiant terminé par un zéro.
     let r = unsafe { CM_Locate_DevNodeW(&mut devinst, id.as_ptr(), CM_LOCATE_DEVNODE_NORMAL) };
     (r == CR_SUCCESS).then_some(devinst)
+}
+
+/// Contrôleurs USB par adresse PCI (bus, appareil, fonction), avec le même
+/// numéro de bus que dans le rapport : sert à situer les événements ETW.
+pub(crate) fn controller_buses() -> HashMap<(u32, u32, u32), String> {
+    let u32_property = |devinst: u32, key: &DEVPROPKEY| {
+        let b = devnode_property(devinst, key)?;
+        Some(u32::from_le_bytes(b.get(..4)?.try_into().ok()?))
+    };
+    interface_list(&GUID_DEVINTERFACE_USB_HOST_CONTROLLER)
+        .iter()
+        .enumerate()
+        .filter_map(|(i, path)| {
+            let devinst = interface_devnode(path)?;
+            let bus = u32_property(devinst, &DEVPKEY_Device_BusNumber)?;
+            let address = u32_property(devinst, &DEVPKEY_Device_Address)?;
+            Some(((bus, address >> 16, address & 0xffff), (i + 1).to_string()))
+        })
+        .collect()
 }
 
 /// Description PnP du périphérique qui expose une interface (nom d'une carte

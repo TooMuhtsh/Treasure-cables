@@ -2,6 +2,7 @@
 
 use std::io::{self, Write};
 use std::path::PathBuf;
+use std::time::Duration;
 
 use crossterm::cursor::MoveTo;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -14,25 +15,38 @@ use crate::{print_report, to_json};
 
 enum Action {
     Refresh,
+    Deep,
     Export,
     Quit,
 }
 
-pub fn run(options: &Options) -> io::Result<()> {
+const MENU: &str = "[R] Rafraîchir   [D] Diagnostic approfondi   [E] Exporter (JSON)   [Q] Quitter";
+
+pub fn run(options: &Options, start_deep: bool) -> io::Result<()> {
+    let mut report = analyse(options)?;
+    if start_deep && let Some(r) = deep_session(options)? {
+        report = Ok(r);
+    }
     loop {
-        clear()?;
-        println!("Analyse des ports et appareils USB…");
-        let report = treasure_collect::collect(options);
         clear()?;
         match &report {
             Ok(r) => print_report(r),
             Err(e) => println!("Erreur pendant l'analyse : {e}"),
         }
         loop {
-            println!("\n[R] Rafraîchir   [E] Exporter le rapport (JSON)   [Q] Quitter");
+            println!("\n{MENU}");
             io::stdout().flush()?;
             match read_key()? {
-                Action::Refresh => break,
+                Action::Refresh => {
+                    report = analyse(options)?;
+                    break;
+                }
+                Action::Deep => {
+                    if let Some(r) = deep_session(options)? {
+                        report = Ok(r);
+                        break;
+                    }
+                }
                 Action::Quit => return Ok(()),
                 Action::Export => match &report {
                     Ok(r) => match export(r) {
@@ -49,6 +63,101 @@ pub fn run(options: &Options) -> io::Result<()> {
             }
         }
     }
+}
+
+fn analyse(options: &Options) -> io::Result<Result<Report, String>> {
+    clear()?;
+    println!("Analyse des ports et appareils USB…");
+    Ok(treasure_collect::collect(options).map_err(|e| e.to_string()))
+}
+
+/// Écoute de la pile USB pendant que l'utilisateur branche et débranche.
+/// Renvoie un nouveau rapport qui inclut le bilan, ou rien si annulé.
+fn deep_session(options: &Options) -> io::Result<Option<Report>> {
+    if cfg!(windows) && !treasure_collect::is_elevated() {
+        println!(
+            "\nLe diagnostic approfondi écoute la pile USB de Windows pendant que vous branchez \
+             et débranchez : il faut les droits administrateur."
+        );
+        println!("Relancer Treasure Cables en administrateur ? [O] Oui   [N] Non");
+        io::stdout().flush()?;
+        if read_yes_no()? {
+            match treasure_collect::relaunch_elevated("--deep") {
+                Ok(()) => println!(
+                    "\n✔ Une fenêtre administrateur s'ouvre (validez l'invite de Windows)."
+                ),
+                Err(e) => println!("\n✖ {e}"),
+            }
+        }
+        return Ok(None);
+    }
+    let capture = match treasure_collect::start_deep_capture() {
+        Ok(c) => c,
+        Err(e) => {
+            println!("\n✖ {e}");
+            return Ok(None);
+        }
+    };
+    clear()?;
+    println!("Diagnostic approfondi : écoute de la pile USB\n");
+    println!("  1. Débranchez l'appareil ou le câble à tester.");
+    println!(
+        "  2. Rebranchez-le, plusieurs fois si besoin, en laissant quelques secondes entre deux essais."
+    );
+    println!("  3. Appuyez sur une touche pour terminer (arrêt automatique après 2 minutes).\n");
+    terminal::enable_raw_mode()?;
+    let waited = loop {
+        print!(
+            "\r  ⏱ {:>3} s · {} événement(s) USB   ",
+            capture.elapsed_s(),
+            capture.events()
+        );
+        io::stdout().flush()?;
+        if capture.elapsed_s() >= 120 {
+            break Ok(());
+        }
+        match event::poll(Duration::from_millis(500)) {
+            Ok(true) => match event::read() {
+                Ok(Event::Key(key)) if key.kind == KeyEventKind::Press => break Ok(()),
+                Ok(_) => {}
+                Err(e) => break Err(e),
+            },
+            Ok(false) => {}
+            Err(e) => break Err(e),
+        }
+    };
+    terminal::disable_raw_mode()?;
+    println!("\n\nAnalyse…");
+    // Arrête toujours l'écoute, même si la lecture du clavier a échoué.
+    let diagnostics = capture.stop();
+    waited?;
+    let mut report = match treasure_collect::collect(options) {
+        Ok(r) => r,
+        Err(e) => {
+            println!("✖ {e}");
+            return Ok(None);
+        }
+    };
+    report.link_diagnostics = Some(diagnostics);
+    Ok(Some(report))
+}
+
+fn read_yes_no() -> io::Result<bool> {
+    terminal::enable_raw_mode()?;
+    let answer = loop {
+        match event::read() {
+            Ok(Event::Key(key)) if key.kind == KeyEventKind::Press => match key.code {
+                KeyCode::Char(c) if matches!(c.to_ascii_lowercase(), 'o' | 'y') => break Ok(true),
+                KeyCode::Char(c) if c.eq_ignore_ascii_case(&'n') => break Ok(false),
+                KeyCode::Esc => break Ok(false),
+                _ => {}
+            },
+            Ok(_) => {}
+            Err(e) => break Err(e),
+        }
+    };
+    terminal::disable_raw_mode()?;
+    answer
 }
 
 fn clear() -> io::Result<()> {
@@ -68,6 +177,7 @@ fn read_key() -> io::Result<Action> {
                     }
                     KeyCode::Char(c) => match c.to_ascii_lowercase() {
                         'r' => Some(Action::Refresh),
+                        'd' => Some(Action::Deep),
                         'e' => Some(Action::Export),
                         'q' => Some(Action::Quit),
                         _ => None,

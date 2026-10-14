@@ -6,7 +6,8 @@
 use serde::{Deserialize, Serialize};
 use treasure_model::typec::{CableKind, CableSpeed, TypeCPort};
 use treasure_model::{
-    AltModeState, ConnectionProblem, Device, Display, DisplayTransport, DpLink, Report, Source,
+    AltModeState, ConnectionProblem, Device, Display, DisplayTransport, DpLink, LinkDiagnostics,
+    Report, Source,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -51,6 +52,9 @@ pub fn audit(report: &Report) -> Vec<Finding> {
     }
     for display in &report.displays {
         check_display(display, &mut findings);
+    }
+    if let Some(diagnostics) = &report.link_diagnostics {
+        check_link_diagnostics(report, diagnostics, &mut findings);
     }
     findings.sort_by(|a, b| {
         b.severity
@@ -343,6 +347,107 @@ fn check_display(display: &Display, out: &mut Vec<Finding>) {
     });
 }
 
+/// Bilan d'une écoute de la pile USB : les erreurs de lien sont la preuve
+/// la plus directe d'un câble ou d'un connecteur défaillant.
+fn check_link_diagnostics(report: &Report, diagnostics: &LinkDiagnostics, out: &mut Vec<Finding>) {
+    let mut total_errors = 0;
+    for port in &diagnostics.ports {
+        let subject = port
+            .location
+            .clone()
+            .or_else(|| port.port.map(|p| format!("port {p}")))
+            .unwrap_or_else(|| "port inconnu".to_owned());
+        let name = port
+            .location
+            .as_deref()
+            .and_then(|loc| report.devices().find(|d| d.location == loc))
+            .map(|d| d.display_name())
+            .or_else(|| match (port.vendor_id, port.product_id) {
+                (Some(v), Some(p)) => Some(format!("{v:04x}:{p:04x}")),
+                _ => None,
+            });
+        let errors = port.link_errors();
+        total_errors += errors;
+        if errors > 0 {
+            let mut details = Vec::new();
+            for (count, label) in [
+                (port.enumeration_errors, "erreur(s) de reconnaissance"),
+                (port.port_errors, "erreur(s) de port"),
+                (port.transfer_errors, "erreur(s) de transfert"),
+                (port.hub_resets, "réinitialisation(s) de hub"),
+            ] {
+                if count > 0 {
+                    details.push(format!("{count} {label}"));
+                }
+            }
+            let never_recognized = port.connections == 0 && port.enumeration_errors > 0;
+            let outcome = if never_recognized {
+                "L'appareil n'a jamais été reconnu."
+            } else if port.connections > 0 {
+                "L'appareil a fini par être reconnu, mais la connexion est instable."
+            } else {
+                ""
+            };
+            out.push(Finding {
+                code: "link_errors",
+                severity: if never_recognized { Severity::Problem } else { Severity::Warning },
+                confidence: if errors >= 3 { Confidence::Likely } else { Confidence::Possible },
+                subject: subject.clone(),
+                title: match &name {
+                    Some(n) => format!("Lien USB instable sur {subject} ({n})"),
+                    None => format!("Lien USB instable sur {subject}"),
+                },
+                detail: format!(
+                    "Pendant l'écoute : {}. {outcome} Causes habituelles : câble abîmé ou trop long, connecteur encrassé ou desserré. Essayez un autre câble : si les erreurs suivent le câble, c'est lui.",
+                    details.join(", ")
+                ),
+            });
+        }
+        if port.descriptor_errors > 0 {
+            out.push(Finding {
+                code: "descriptor_errors",
+                severity: Severity::Info,
+                confidence: Confidence::Certain,
+                subject: subject.clone(),
+                title: format!(
+                    "{} annonce des descripteurs non conformes",
+                    name.as_deref().unwrap_or("L'appareil")
+                ),
+                detail: "Défaut du micrologiciel de l'appareil, pas du câble. Il fonctionne souvent malgré tout.".to_owned(),
+            });
+        }
+    }
+    if diagnostics.controller_errors > 0 {
+        out.push(Finding {
+            code: "controller_errors",
+            severity: Severity::Warning,
+            confidence: Confidence::Possible,
+            subject: "contrôleur USB".to_owned(),
+            title: format!(
+                "Le contrôleur USB a signalé {} erreur(s) ou réinitialisation(s)",
+                diagnostics.controller_errors
+            ),
+            detail: "Un appareil ou un câble défaillant peut perturber tout le contrôleur. Si le problème persiste, mettez à jour le BIOS et les pilotes du chipset.".to_owned(),
+        });
+    }
+    if total_errors == 0 && diagnostics.controller_errors == 0 {
+        let connections: u32 = diagnostics.ports.iter().map(|p| p.connections).sum();
+        out.push(Finding {
+            code: "link_clean",
+            severity: Severity::Info,
+            confidence: Confidence::Certain,
+            subject: "diagnostic approfondi".to_owned(),
+            title: format!(
+                "Aucune erreur de lien USB pendant {} s d'écoute",
+                diagnostics.duration_s
+            ),
+            detail: format!(
+                "{connections} reconnaissance(s) d'appareil réussie(s). Les câbles et connecteurs utilisés pendant l'écoute n'ont montré aucun signe de faiblesse."
+            ),
+        });
+    }
+}
+
 fn check_cable(port: &TypeCPort, out: &mut Vec<Finding>) {
     let Some(cable) = &port.cable else {
         if port.partner.is_some() {
@@ -405,8 +510,8 @@ mod tests {
     use super::*;
     use treasure_model::typec::{Cable, CableVdo, Partner};
     use treasure_model::{
-        AltMode, Bus, DisplayConnection, DisplayTransport, DpLink, HostInfo, PortInfo,
-        SCHEMA_VERSION, Sourced, Speed, ToolInfo,
+        AltMode, Bus, DisplayConnection, DisplayTransport, DpLink, HostInfo, PortActivity,
+        PortInfo, SCHEMA_VERSION, Sourced, Speed, ToolInfo,
     };
 
     fn report_with(device: Device) -> Report {
@@ -434,6 +539,7 @@ mod tests {
             typec_ports: vec![],
             displays: vec![],
             usb4_routers: vec![],
+            link_diagnostics: None,
             notes: vec![],
         }
     }
@@ -528,6 +634,39 @@ mod tests {
         assert!(findings[0].title.contains("30 Hz"));
         // 4K à 60 Hz demande ~12,9 Gb/s : la liaison peut être en cause.
         assert_eq!(findings[0].severity, Severity::Warning);
+    }
+
+    #[test]
+    fn link_diagnostics_findings() {
+        let mut report = report_with(ssd(Speed::Gen1x1, None));
+        report.link_diagnostics = Some(LinkDiagnostics {
+            duration_s: 30,
+            ports: vec![PortActivity {
+                location: Some("1-2".into()),
+                connections: 1,
+                enumeration_errors: 3,
+                ..Default::default()
+            }],
+            controller_errors: 0,
+        });
+        let findings = audit(&report);
+        let f = findings.iter().find(|f| f.code == "link_errors").unwrap();
+        assert_eq!(f.confidence, Confidence::Likely);
+        assert_eq!(f.severity, Severity::Warning);
+        assert!(f.title.contains("SSD"));
+        assert!(f.detail.contains("instable"));
+
+        report.link_diagnostics = Some(LinkDiagnostics {
+            duration_s: 30,
+            ports: vec![PortActivity {
+                connections: 2,
+                ..Default::default()
+            }],
+            controller_errors: 0,
+        });
+        let codes: Vec<_> = audit(&report).iter().map(|f| f.code).collect();
+        assert!(codes.contains(&"link_clean"));
+        assert!(!codes.contains(&"link_errors"));
     }
 
     #[test]

@@ -14,17 +14,19 @@ Treasure Cables : audit des ports, câbles et appareils USB
 Usage : treasure-cables [options]
 
 Sans option, dans une console : diagnostic et menu interactif
-(rafraîchir, exporter le rapport JSON, quitter).
+(rafraîchir, diagnostic approfondi, exporter le rapport JSON, quitter).
 
 Options :
   --json             Écrit le rapport JSON (à partager ou à ouvrir sur le site)
   --input <fichier>  Audite un rapport JSON existant au lieu de la machine
+  --deep             Ouvre directement le diagnostic approfondi (administrateur)
   --include-serials  Inclut les numéros de série (exclus par défaut)
   -V, --version      Affiche la version
   -h, --help         Affiche cette aide";
 
 struct Args {
     json: bool,
+    deep: bool,
     input: Option<String>,
     include_serials: bool,
 }
@@ -32,6 +34,7 @@ struct Args {
 fn parse_args() -> Result<Args, String> {
     let mut args = Args {
         json: false,
+        deep: false,
         input: None,
         include_serials: false,
     };
@@ -39,6 +42,7 @@ fn parse_args() -> Result<Args, String> {
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--json" => args.json = true,
+            "--deep" => args.deep = true,
             "--include-serials" => args.include_serials = true,
             "--input" => args.input = Some(it.next().ok_or("--input attend un fichier")?),
             "-V" | "--version" => {
@@ -77,7 +81,7 @@ fn main() -> ExitCode {
         && std::io::stdin().is_terminal()
         && std::io::stdout().is_terminal();
     if interactive {
-        return match menu::run(&options) {
+        return match menu::run(&options, args.deep) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("Erreur : {e}");
@@ -120,6 +124,7 @@ fn print_report(report: &Report) {
     );
     print_tree(report);
     print_displays(report);
+    print_link_diagnostics(report);
     print_findings(&treasure_audit::audit(report));
     for note in &report.notes {
         println!("ℹ {note}");
@@ -214,6 +219,47 @@ fn ports_summary(hub: &Device) -> String {
         text.push_str(&format!(", dont {type_c} USB-C"));
     }
     text
+}
+
+fn print_link_diagnostics(report: &Report) {
+    let Some(diagnostics) = &report.link_diagnostics else {
+        return;
+    };
+    println!(
+        "\nDiagnostic approfondi ({} s d'écoute)",
+        diagnostics.duration_s
+    );
+    if diagnostics.ports.is_empty() {
+        println!("  Aucune activité USB observée : rien n'a été branché ou débranché.");
+    }
+    for port in &diagnostics.ports {
+        let place = port
+            .location
+            .clone()
+            .or_else(|| port.port.map(|p| format!("port {p}")))
+            .unwrap_or_else(|| "port inconnu".to_owned());
+        let name = port
+            .location
+            .as_deref()
+            .and_then(|loc| report.devices().find(|d| d.location == loc))
+            .map(|d| d.display_name())
+            .or_else(|| match (port.vendor_id, port.product_id) {
+                (Some(v), Some(p)) => Some(format!("{v:04x}:{p:04x}")),
+                _ => None,
+            })
+            .map(|n| format!(" {n}"))
+            .unwrap_or_default();
+        let errors = port.link_errors();
+        let verdict = if errors == 0 {
+            "aucune erreur".to_owned()
+        } else {
+            format!("{errors} erreur(s) de lien")
+        };
+        println!(
+            "  {place}{name} : {} reconnaissance(s), {} retrait(s), {verdict}",
+            port.connections, port.removals
+        );
+    }
 }
 
 fn print_displays(report: &Report) {
