@@ -102,6 +102,8 @@ cargo run --release -p treasure-cables -- --input rapport.json
 ## Documentation
 
 - [Ce que Windows montre, et ce qu'on peut récupérer qu'il ne montre pas](docs/recherche-sources-windows.md)
+- [Feuille de route](docs/feuille-de-route.md) : diagnostic Ethernet et Wi-Fi, publication
+  (versions GitHub, Play Store, F-Droid)
 - [Protocole de sonde](docs/protocole-sonde.md) : comment le logiciel et une sonde (l'application
   Android, ou tout autre appareil) testent un câble ensemble
 
