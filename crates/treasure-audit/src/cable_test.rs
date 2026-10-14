@@ -36,9 +36,70 @@ pub struct CableVerdict {
     /// Appareil qui a servi au test.
     pub device: Option<String>,
     pub speed: Option<Speed>,
-    /// Mesures en bref, pour comparer les câbles ("vers le PC 2,5 Gb/s · vers le téléphone 922 Mb/s · charge 742 mA").
+    /// Notes en bref (transfert, charge, général), pour lire et comparer
+    /// d'un coup d'œil ; `detail` garde l'explication complète.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scores: Vec<Score>,
+    /// Le détail, rangé : une ligne par constat (« Vitesse obtenue · 5 Gb/s »).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub facts: Vec<VerdictFact>,
+    /// Ce qu'il faut faire, en une phrase, s'il y a quelque chose à faire.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub measures: Option<String>,
+    pub advice: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VerdictFact {
+    pub label: String,
+    pub value: String,
+}
+
+pub(crate) fn fact(label: &str, value: impl Into<String>) -> VerdictFact {
+    VerdictFact {
+        label: label.to_owned(),
+        value: value.into(),
+    }
+}
+
+/// Critère noté.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Criterion {
+    Transfer,
+    Charge,
+    Overall,
+}
+
+/// Teinte de la pastille.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Tone {
+    Good,
+    Fair,
+    Bad,
+    Unknown,
+}
+
+/// Une note : « Transfert · Excellent · 5 Gb/s ».
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Score {
+    pub criterion: Criterion,
+    pub rating: String,
+    pub tone: Tone,
+    /// Chiffre qui justifie la note.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+}
+
+impl Score {
+    pub fn new(criterion: Criterion, rating: &str, tone: Tone, value: Option<String>) -> Self {
+        Score {
+            criterion,
+            rating: rating.to_owned(),
+            tone,
+            value,
+        }
+    }
 }
 
 /// Appareils apparus entre les deux relevés (les plus hauts dans l'arbre :
@@ -82,7 +143,7 @@ pub fn evaluate(before: &Report, after: &Report, link: Option<&LinkDiagnostics>)
         .or(new.first())
         .copied()
     else {
-        return if errors > 0 {
+        let v = if errors > 0 {
             CableVerdict {
                 outcome: Outcome::NotRecognized,
                 severity: Severity::Problem,
@@ -92,7 +153,9 @@ pub fn evaluate(before: &Report, after: &Report, link: Option<&LinkDiagnostics>)
                 ),
                 device: None,
                 speed: None,
-                measures: None,
+                scores: Vec::new(),
+                facts: Vec::new(),
+                advice: None,
             }
         } else {
             CableVerdict {
@@ -102,17 +165,149 @@ pub fn evaluate(before: &Report, after: &Report, link: Option<&LinkDiagnostics>)
                 detail: "C'est probablement un câble de charge seule (très courant), ou ses fils de données sont coupés. Un appareil USB se signale au PC dès son branchement, même un téléphone verrouillé. Pour en être sûr, vérifiez que l'appareil est bien détecté avec un autre câble sur la même prise.".to_owned(),
                 device: None,
                 speed: None,
-                measures: None,
+                scores: Vec::new(),
+                facts: Vec::new(),
+                advice: None,
             }
         };
+        return scored(v, None, None, errors);
     };
 
     speed_verdict(device, errors)
 }
 
+/// Note de transfert d'après le verdict : vitesse obtenue, comparée à ce
+/// que sait faire l'appareil.
+pub fn transfer_score(v: &CableVerdict, max: Option<Speed>, errors: u32) -> Score {
+    let speed = v.speed;
+    let short = |s: Option<Speed>| s.map(|s| s.short().to_owned());
+    let instead = || match (speed, max) {
+        (Some(s), Some(m)) => Some(format!("{} au lieu de {}", s.short(), m.short())),
+        _ => short(speed),
+    };
+    let (rating, tone, value) = match v.outcome {
+        Outcome::NoData => ("Aucun", Tone::Bad, None),
+        Outcome::NotRecognized => ("Défaillant", Tone::Bad, None),
+        Outcome::LinkDropped => ("Instable", Tone::Bad, short(speed)),
+        Outcome::Usb2Limited => ("Limité", Tone::Fair, instead()),
+        Outcome::BelowCapability => ("Moyen", Tone::Fair, instead()),
+        Outcome::PortLimited => ("À confirmer", Tone::Unknown, short(speed)),
+        Outcome::Ok if errors > 0 => ("Instable", Tone::Fair, short(speed)),
+        Outcome::Ok => match speed {
+            Some(s) if s.is_superspeed() && max.is_none_or(|m| s >= m) => {
+                ("Excellent", Tone::Good, short(speed))
+            }
+            Some(s) if !s.is_superspeed() => (
+                "Bon",
+                Tone::Good,
+                Some(format!("{} (appareil USB 2)", s.short())),
+            ),
+            _ => ("Bon", Tone::Good, short(speed)),
+        },
+    };
+    Score::new(Criterion::Transfer, rating, tone, value)
+}
+
+/// Note générale, déduite des autres.
+pub fn overall_score(v: &CableVerdict, scores: &[Score]) -> Score {
+    let transfer = scores
+        .iter()
+        .find(|s| s.criterion == Criterion::Transfer)
+        .map_or(Tone::Unknown, |s| s.tone);
+    let (rating, tone, value) = match (v.outcome, transfer) {
+        (Outcome::NoData, _) => ("Charge seulement", Tone::Fair, "pas de données"),
+        (_, Tone::Bad) => ("À éviter", Tone::Bad, "liaison défaillante"),
+        (Outcome::Usb2Limited, _) => ("Usage limité", Tone::Fair, "charge et petits appareils"),
+        (_, Tone::Fair) => ("Usage limité", Tone::Fair, "liaison à surveiller"),
+        (_, Tone::Unknown) => ("À confirmer", Tone::Unknown, "refaire sur une prise USB 3"),
+        (_, Tone::Good) => ("Bon câble", Tone::Good, "données et charge"),
+    };
+    Score::new(Criterion::Overall, rating, tone, Some(value.to_owned()))
+}
+
+/// Ajoute au verdict ses notes, ses constats et son conseil.
+fn scored(
+    mut v: CableVerdict,
+    device: Option<&Device>,
+    max: Option<Speed>,
+    errors: u32,
+) -> CableVerdict {
+    let transfer = transfer_score(&v, max, errors);
+    let overall = overall_score(&v, std::slice::from_ref(&transfer));
+    v.scores = vec![transfer, overall];
+    v.facts = device_facts(device, errors);
+    v.advice = advice(&v, max, errors);
+    v
+}
+
+/// Constats sur l'appareil qui a servi au test.
+pub(crate) fn device_facts(device: Option<&Device>, errors: u32) -> Vec<VerdictFact> {
+    let mut facts = Vec::new();
+    if let Some(d) = device {
+        facts.push(fact("Appareil", d.display_name()));
+        if let Some(s) = d.speed {
+            facts.push(fact("Vitesse obtenue", s.value.label()));
+        }
+        if let Some(m) = d.max_speed {
+            facts.push(fact("Maximum de l'appareil", m.value.label()));
+        }
+        if let Some(p) = d.port.as_ref().and_then(|p| p.max_speed) {
+            facts.push(fact("Prise", treasure_model::view::capability_label(p)));
+        }
+    }
+    if errors > 0 {
+        facts.push(fact("Erreurs de lien", errors.to_string()));
+    }
+    facts
+}
+
+/// Le conseil, en une phrase, d'après l'issue du test.
+pub fn advice(v: &CableVerdict, max: Option<Speed>, errors: u32) -> Option<String> {
+    let text = match v.outcome {
+        Outcome::NoData => {
+            "Câble de charge seule probable : vérifiez que l'appareil est détecté avec un autre câble sur la même prise."
+        }
+        Outcome::NotRecognized => {
+            "Essayez une autre prise, puis un autre câble : si le problème suit le câble, c'est lui."
+        }
+        Outcome::Usb2Limited => {
+            "Bien pour charger et pour les petits appareils, pas pour un SSD ou un dock."
+        }
+        Outcome::BelowCapability => {
+            "Le câble ou la prise limite le débit : essayez une autre prise pour les départager."
+        }
+        Outcome::PortLimited => {
+            "Refaites le test sur une prise USB 3 pour savoir si le câble gère l'USB 3."
+        }
+        Outcome::LinkDropped => {
+            "Refaites le test en bougeant légèrement le câble : si la liaison lâche encore, c'est un faux contact."
+        }
+        Outcome::Ok if errors > 0 => {
+            "Connexion fragile : essayez un autre câble ou nettoyez les connecteurs."
+        }
+        Outcome::Ok
+            if v.speed.is_some_and(|s| !s.is_superspeed())
+                && max.is_none_or(|m| !m.is_superspeed()) =>
+        {
+            "Pour savoir si le câble gère l'USB 3, refaites le test avec un appareil USB 3 (SSD, clé USB 3)."
+        }
+        Outcome::Ok => return None,
+    };
+    Some(text.to_owned())
+}
+
 /// Verdict sur la vitesse obtenue par un appareil reconnu ; `errors` compte
 /// les erreurs de lien relevées pendant le test.
 pub fn speed_verdict(device: &Device, errors: u32) -> CableVerdict {
+    scored(
+        speed_verdict_text(device, errors),
+        Some(device),
+        device.max_speed.map(|m| m.value),
+        errors,
+    )
+}
+
+fn speed_verdict_text(device: &Device, errors: u32) -> CableVerdict {
     let fragile = if errors > 0 {
         format!(
             " Attention : {errors} erreur(s) de lien pendant le test, la connexion est fragile."
@@ -128,7 +323,9 @@ pub fn speed_verdict(device: &Device, errors: u32) -> CableVerdict {
         detail,
         device: Some(name.clone()),
         speed: device.speed.map(|s| s.value),
-        measures: None,
+        scores: Vec::new(),
+        facts: Vec::new(),
+        advice: None,
     };
 
     if device.problem.is_some() {
@@ -293,6 +490,12 @@ mod tests {
         let verdict = evaluate(&before, &before.clone(), None);
         assert_eq!(verdict.outcome, Outcome::NoData);
         assert_eq!(verdict.severity, Severity::Problem);
+        assert_eq!(ratings(&verdict), vec!["Aucun", "Charge seulement"]);
+        assert!(verdict.advice.is_some());
+    }
+
+    fn ratings(v: &CableVerdict) -> Vec<&str> {
+        v.scores.iter().map(|s| s.rating.as_str()).collect()
     }
 
     #[test]
@@ -322,6 +525,21 @@ mod tests {
         let verdict = evaluate(&before, &after, None);
         assert_eq!(verdict.outcome, Outcome::Usb2Limited);
         assert_eq!(verdict.device.as_deref(), Some("Sandisk"));
+        assert_eq!(ratings(&verdict), vec!["Limité", "Usage limité"]);
+        assert_eq!(
+            verdict.scores[0].value.as_deref(),
+            Some("480 Mb/s au lieu de 5 Gb/s")
+        );
+        let labels: Vec<&str> = verdict.facts.iter().map(|f| f.label.as_str()).collect();
+        assert_eq!(
+            labels,
+            vec![
+                "Appareil",
+                "Vitesse obtenue",
+                "Maximum de l'appareil",
+                "Prise"
+            ]
+        );
     }
 
     #[test]
@@ -343,6 +561,8 @@ mod tests {
         let verdict = evaluate(&report(vec![]), &after, None);
         assert_eq!(verdict.outcome, Outcome::Ok);
         assert!(verdict.detail.contains("son maximum"));
+        assert_eq!(ratings(&verdict), vec!["Excellent", "Bon câble"]);
+        assert_eq!(verdict.advice, None);
 
         let phone = Device {
             max_speed: None,
@@ -351,6 +571,12 @@ mod tests {
         let verdict = evaluate(&report(vec![]), &report(vec![phone]), None);
         assert_eq!(verdict.outcome, Outcome::Ok);
         assert!(verdict.detail.contains("ne dit pas"));
+        assert!(
+            verdict
+                .advice
+                .as_deref()
+                .is_some_and(|a| a.contains("USB 3"))
+        );
     }
 
     #[test]

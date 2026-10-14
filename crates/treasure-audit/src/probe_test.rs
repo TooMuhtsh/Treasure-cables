@@ -6,7 +6,10 @@
 use treasure_model::{Device, Report};
 
 use crate::Severity;
-use crate::cable_test::{CableVerdict, Outcome, speed_verdict};
+use crate::cable_test::{
+    CableVerdict, Criterion, Outcome, Score, Tone, advice, device_facts, fact, overall_score,
+    speed_verdict, transfer_score,
+};
 
 /// Ce qu'a donné une séance de mesures avec la sonde.
 #[derive(Debug, Clone, Default)]
@@ -59,7 +62,7 @@ pub fn evaluate(m: &ProbeMeasurements) -> CableVerdict {
     let charge = charge_sentence(m);
 
     if let Some(during) = &m.dropped_during {
-        return CableVerdict {
+        let v = CableVerdict {
             outcome: Outcome::LinkDropped,
             severity: Severity::Problem,
             title: "La liaison s'est coupée pendant le test".to_owned(),
@@ -69,8 +72,11 @@ pub fn evaluate(m: &ProbeMeasurements) -> CableVerdict {
             ),
             device: Some(m.probe_name.clone()),
             speed: m.device.and_then(|d| d.speed).map(|s| s.value),
-            measures: measures_summary(m),
+            scores: Vec::new(),
+            facts: Vec::new(),
+            advice: None,
         };
+        return with_scores(v, m);
     }
 
     let mut verdict = match m.device {
@@ -104,31 +110,85 @@ pub fn evaluate(m: &ProbeMeasurements) -> CableVerdict {
             ),
             device: Some(m.probe_name.clone()),
             speed: None,
-            measures: None,
+            scores: Vec::new(),
+            facts: Vec::new(),
+            advice: None,
         },
     };
     verdict.detail.push_str(&measured);
     verdict.detail.push_str(&superspeed_sentence(m));
     verdict.detail.push_str(&charge);
-    verdict.measures = measures_summary(m);
-    verdict
+    with_scores(verdict, m)
 }
 
-/// Débit dans chaque sens et charge, en bref.
-fn measures_summary(m: &ProbeMeasurements) -> Option<String> {
-    let parts: Vec<String> = [
-        m.to_computer_mbps
-            .map(|v| format!("vers le PC {}", mbps_label(v))),
-        m.to_probe_mbps
-            .map(|v| format!("vers le téléphone {}", mbps_label(v))),
-        m.charge_current_ma
-            .filter(|ma| *ma > 0)
-            .map(|ma| format!("charge {}", amps_label(ma))),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
-    (!parts.is_empty()).then(|| parts.join(" · "))
+/// Notes (transfert avec le débit mesuré, charge reçue, général), constats
+/// rangés et conseil du test avec la sonde.
+fn with_scores(mut v: CableVerdict, m: &ProbeMeasurements) -> CableVerdict {
+    let max = m.device.and_then(|d| d.max_speed).map(|s| s.value);
+    let mut transfer = transfer_score(&v, max, m.link_errors);
+    let best = m
+        .to_computer_mbps
+        .into_iter()
+        .chain(m.to_probe_mbps)
+        .fold(0.0, f64::max);
+    if best > 0.0 {
+        let measured = format!("{} mesurés", mbps_label(best));
+        transfer.value = Some(match transfer.value {
+            Some(speed) => format!("{speed} · {measured}"),
+            None => measured,
+        });
+    }
+    let mut scores = vec![transfer];
+    if let Some(ma) = m.charge_current_ma {
+        let (rating, tone) = match ma {
+            1500.. => ("Rapide", Tone::Good),
+            500.. => ("Normale", Tone::Good),
+            1.. => ("Lente", Tone::Fair),
+            _ => ("Nulle", Tone::Unknown),
+        };
+        let value = if ma > 0 {
+            amps_label(ma)
+        } else {
+            "batterie pleine ?".to_owned()
+        };
+        scores.push(Score::new(Criterion::Charge, rating, tone, Some(value)));
+    }
+    let overall = overall_score(&v, &scores);
+    scores.push(overall);
+    v.scores = scores;
+
+    // Constats : l'appareil sous le nom du modèle, puis les mesures.
+    let mut facts = device_facts(m.device, m.link_errors);
+    match facts.first_mut() {
+        Some(first) if first.label == "Appareil" => first.value = m.probe_name.clone(),
+        _ => facts.insert(0, fact("Appareil", m.probe_name.clone())),
+    }
+    if m.device.is_none() {
+        facts.insert(
+            1,
+            fact("Vitesse obtenue", "inconnue (appareil non retrouvé en USB)"),
+        );
+    }
+    if let Some(v) = m.to_computer_mbps {
+        facts.push(fact("Débit vers le PC", mbps_label(v)));
+    }
+    if let Some(v) = m.to_probe_mbps {
+        facts.push(fact("Débit vers le téléphone", mbps_label(v)));
+    }
+    if let Some(during) = &m.dropped_during {
+        facts.push(fact("Coupure", format!("pendant la mesure {during}")));
+    }
+    if let Some(ma) = m.charge_current_ma {
+        let value = if ma > 0 {
+            amps_label(ma)
+        } else {
+            "nulle".to_owned()
+        };
+        facts.push(fact("Charge reçue", value));
+    }
+    v.facts = facts;
+    v.advice = advice(&v, max, m.link_errors);
+    v
 }
 
 fn throughput_sentence(m: &ProbeMeasurements) -> String {
@@ -265,9 +325,25 @@ mod tests {
             v.detail
         );
         assert_eq!(v.device.as_deref(), Some("samsung SM-S911B"));
+        assert_eq!(v.facts[0].value, "samsung SM-S911B");
+        assert!(
+            v.facts
+                .iter()
+                .any(|f| f.label == "Débit vers le PC" && f.value == "412 Mb/s")
+        );
+        assert_eq!(v.advice, None);
+        let ratings: Vec<(&str, &str)> = v
+            .scores
+            .iter()
+            .map(|s| (s.rating.as_str(), s.value.as_deref().unwrap_or("")))
+            .collect();
         assert_eq!(
-            v.measures.as_deref(),
-            Some("vers le PC 412 Mb/s · vers le téléphone 1,5 Gb/s · charge 1,25 A")
+            ratings,
+            vec![
+                ("Excellent", "5 Gb/s · 1,5 Gb/s mesurés"),
+                ("Normale", "1,25 A"),
+                ("Bon câble", "données et charge"),
+            ]
         );
     }
 

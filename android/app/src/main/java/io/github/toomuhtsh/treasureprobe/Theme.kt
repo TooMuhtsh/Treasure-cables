@@ -103,6 +103,15 @@ fun verdictColors(severity: String): VerdictColors {
     }
 }
 
+/** Couleurs d'une pastille de note, comme dans le logiciel. */
+@Composable
+fun toneColors(tone: String): VerdictColors = when (tone) {
+    "good" -> verdictColors("ok")
+    "fair" -> verdictColors("warning")
+    "bad" -> verdictColors("problem")
+    else -> VerdictColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
 @Composable
 fun TreasureTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = if (isSystemInDarkTheme()) Dark else Light, content = content)

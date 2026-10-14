@@ -103,11 +103,34 @@ class ProbeServer(
                         severity = message.optString("severity", "info"),
                         title = message.optString("title"),
                         detail = message.optString("detail"),
+                        scores = scores(message),
+                        facts = facts(message),
+                        advice = message.optString("advice").takeIf { it.isNotBlank() && it != "null" },
                     ),
                 )
                 "bye" -> return
                 else -> send(output, error("unknown_type", "Message inconnu."))
             }
+        }
+    }
+
+    private fun scores(message: JSONObject): List<VerdictScore> {
+        val array = message.optJSONArray("scores") ?: return emptyList()
+        return (0 until array.length()).mapNotNull { i ->
+            val s = array.optJSONObject(i) ?: return@mapNotNull null
+            VerdictScore(
+                criterion = s.optString("criterion"),
+                rating = s.optString("rating"),
+                tone = s.optString("tone", "unknown"),
+                value = s.optString("value").takeIf { it.isNotBlank() && it != "null" },
+            )
+        }
+    }
+
+    private fun facts(message: JSONObject): List<Pair<String, String>> {
+        val array = message.optJSONArray("facts") ?: return emptyList()
+        return (0 until array.length()).mapNotNull { i ->
+            array.optJSONObject(i)?.let { it.optString("label") to it.optString("value") }
         }
     }
 
@@ -233,6 +256,9 @@ interface ProbeHost {
     fun onEvent(event: ProbeEvent)
 }
 
+/** Une note du verdict : « Transfert · Excellent · 5 Gb/s ». */
+data class VerdictScore(val criterion: String, val rating: String, val tone: String, val value: String?)
+
 data class DeviceInfo(val manufacturer: String, val model: String, val android: String)
 
 data class BatteryReading(
@@ -250,7 +276,14 @@ sealed interface ProbeEvent {
     data class Connected(val computer: String) : ProbeEvent
     data class Status(val text: String) : ProbeEvent
     data class Measuring(val toComputer: Boolean) : ProbeEvent
-    data class Verdict(val severity: String, val title: String, val detail: String) : ProbeEvent
+    data class Verdict(
+        val severity: String,
+        val title: String,
+        val detail: String,
+        val scores: List<VerdictScore> = emptyList(),
+        val facts: List<Pair<String, String>> = emptyList(),
+        val advice: String? = null,
+    ) : ProbeEvent
     data object Disconnected : ProbeEvent
 }
 

@@ -103,7 +103,16 @@ Le logiciel tient la sonde au courant, pour l'affichage :
  "detail":"5 Gb/s négociés, 410 Mb/s mesurés vers l'ordinateur…"}
 ```
 
-`severity` : `ok`, `info`, `warning` ou `problem`.
+`severity` : `ok`, `info`, `warning` ou `problem`. Le verdict porte aussi,
+pour un affichage bref :
+
+- `scores` : les notes, une par critère (`transfer`, `charge`, `overall`),
+  avec `rating` (« Excellent »), `tone` (`good`, `fair`, `bad`, `unknown`) et
+  `value` (« 5 Gb/s · 2,7 Gb/s mesurés ») ;
+- `facts` : le détail rangé, `[{"label":"Débit vers le PC","value":"2,7 Gb/s"}, …]` ;
+- `advice` : le conseil en une phrase, ou `null`.
+
+`detail` reste l'explication complète, en texte.
 
 ### 6. Fin
 

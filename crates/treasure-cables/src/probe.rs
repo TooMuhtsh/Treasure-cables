@@ -241,6 +241,9 @@ impl Session {
             "severity": severity,
             "title": verdict.title,
             "detail": verdict.detail,
+            "scores": verdict.scores,
+            "facts": verdict.facts,
+            "advice": verdict.advice,
         }));
         let _ = control.send(&json!({"type": "bye"}));
         Ok((verdict, report))

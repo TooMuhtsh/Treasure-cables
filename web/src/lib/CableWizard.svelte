@@ -1,5 +1,7 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
+  import Scores from './Scores.svelte';
+  import Verdict from './Verdict.svelte';
   import { verdictLook, type CableStep, type State } from './api';
 
   let {
@@ -63,14 +65,7 @@
         {/if}
       </p>
     {:else if step === 'verdict' && last}
-      {@const l = look(last)}
-      <div class="verdict {l.tone}">
-        <Icon name={l.icon} size={36} />
-        <div>
-          <p class="big">{last.title}</p>
-          <p>{last.detail}</p>
-        </div>
-      </div>
+      <Verdict verdict={last} />
       {#if last.outcome === 'no_data'}
         <p class="muted">Si l'appareil était déjà branché à l'étape 1, recommencez le test.</p>
       {/if}
@@ -83,9 +78,13 @@
           {@const l = look(r)}
           <li class={l.tone}>
             <Icon name={l.icon} size={18} />
-            <span>
-              Câble {i + 1} : {r.title}{r.device ? ` · ${r.device}` : ''}
-              {#if r.measures}<span class="measures">{r.measures}</span>{/if}
+            <span class="result">
+              <span>Câble {i + 1}{r.device ? ` · ${r.device}` : ''}</span>
+              {#if r.scores?.length}
+                <Scores scores={r.scores} compact />
+              {:else}
+                <span class="muted">{r.title}</span>
+              {/if}
             </span>
           </li>
         {/each}
@@ -181,10 +180,6 @@
     background: var(--md-sys-color-secondary-container);
     color: var(--md-sys-color-on-secondary-container);
   }
-  .verdict .big {
-    color: inherit;
-    margin-bottom: 6px;
-  }
   h4 {
     margin: 8px 0 0;
     font: 500 14px/20px var(--md-ref-typeface-brand);
@@ -200,12 +195,12 @@
   .results li {
     display: flex;
     gap: 8px;
-    align-items: center;
+    align-items: flex-start;
   }
-  .measures {
-    display: block;
-    font-size: 12px;
-    color: var(--md-sys-color-on-surface-variant);
+  .result {
+    display: grid;
+    gap: 4px;
+    color: var(--md-sys-color-on-surface);
   }
   .results li.ok {
     color: var(--treasure-ok);

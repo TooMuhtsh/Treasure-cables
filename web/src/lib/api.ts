@@ -117,9 +117,28 @@ export interface CableVerdict {
   detail: string;
   device: string | null;
   speed: string | null;
-  /** Mesures en bref (test avec le téléphone). */
-  measures?: string;
+  /** Notes en bref : transfert, charge (test avec le téléphone), général. */
+  scores?: Score[];
+  /** Le détail rangé, une ligne par constat. */
+  facts?: { label: string; value: string }[];
+  /** Le conseil, en une phrase. */
+  advice?: string;
 }
+
+export type Tone = 'good' | 'fair' | 'bad' | 'unknown';
+
+export interface Score {
+  criterion: 'transfer' | 'charge' | 'overall';
+  rating: string;
+  tone: Tone;
+  value?: string;
+}
+
+export const criterionLabel: Record<Score['criterion'], string> = {
+  transfer: 'Transfert',
+  charge: 'Charge',
+  overall: 'Général',
+};
 
 /** Étape de l'assistant « Tester un câble ». */
 export type CableStep = 'closed' | 'intro' | 'watch' | 'verdict';

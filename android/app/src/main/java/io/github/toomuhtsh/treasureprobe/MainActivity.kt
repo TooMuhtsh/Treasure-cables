@@ -6,6 +6,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -158,15 +166,58 @@ private fun StatusCard(state: UiState, onOpenSettings: () -> Unit) {
 
 @Composable
 private fun VerdictCard(verdict: ProbeEvent.Verdict) {
-    val colors = verdictColors(verdict.severity)
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = colors.container, contentColor = colors.onContainer),
-    ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Title(verdict.title)
-            Text(verdict.detail)
+    var details by rememberSaveable(verdict) { mutableStateOf(false) }
+    val title = when (verdict.severity) {
+        "ok" -> MaterialTheme.colorScheme.primary
+        "warning" -> verdictColors("warning").onContainer
+        "problem" -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(verdict.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = title)
+            if (verdict.scores.isEmpty()) {
+                Text(verdict.detail)
+                return@Column
+            }
+            verdict.scores.forEach { ScoreRow(it) }
+            verdict.advice?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium)
+            }
+            TextButton(onClick = { details = !details }, contentPadding = PaddingValues(0.dp)) {
+                Text(if (details) "Masquer les détails" else "Détails")
+            }
+            if (details) {
+                verdict.facts.forEach { (label, value) -> Fact(label, value) }
+            }
         }
+    }
+}
+
+@Composable
+private fun ScoreRow(score: VerdictScore) {
+    val colors = toneColors(score.tone)
+    val criterion = when (score.criterion) {
+        "transfer" -> "Transfert"
+        "charge" -> "Charge"
+        "overall" -> "Général"
+        else -> score.criterion
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            criterion,
+            modifier = Modifier.width(80.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Surface(shape = RoundedCornerShape(50), color = colors.container, contentColor = colors.onContainer) {
+            Text(
+                score.rating,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
+        score.value?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
     }
 }
 

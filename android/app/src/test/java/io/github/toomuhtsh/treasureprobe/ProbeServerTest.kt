@@ -95,12 +95,20 @@ class ProbeServerTest {
                 assertEquals(8L shl 20, reply.getLong("received"))
             }
 
-            client.send("""{"type":"verdict","severity":"ok","title":"Câble USB 3","detail":"5 Gb/s"}""")
+            client.send(
+                """{"type":"verdict","severity":"ok","title":"Câble USB 3","detail":"5 Gb/s",""" +
+                    """"scores":[{"criterion":"transfer","rating":"Excellent","tone":"good","value":"5 Gb/s"}],""" +
+                    """"facts":[{"label":"Débit vers le PC","value":"2,7 Gb/s"}],"advice":null}""",
+            )
             client.send("""{"type":"bye"}""")
         }
         Thread.sleep(200)
         assertTrue(events.any { it is ProbeEvent.Connected && it.computer == "PC-TEST" })
-        assertTrue(events.any { it is ProbeEvent.Verdict && it.title == "Câble USB 3" })
+        val verdict = events.filterIsInstance<ProbeEvent.Verdict>().single()
+        assertEquals("Câble USB 3", verdict.title)
+        assertEquals(VerdictScore("transfer", "Excellent", "good", "5 Gb/s"), verdict.scores.single())
+        assertEquals("Débit vers le PC" to "2,7 Gb/s", verdict.facts.single())
+        assertNull(verdict.advice)
         assertTrue(events.last() is ProbeEvent.Disconnected)
     }
 
