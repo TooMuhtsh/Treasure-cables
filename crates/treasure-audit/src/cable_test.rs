@@ -36,6 +36,9 @@ pub struct CableVerdict {
     /// Appareil qui a servi au test.
     pub device: Option<String>,
     pub speed: Option<Speed>,
+    /// Mesures en bref, pour comparer les câbles ("vers le PC 2,5 Gb/s · vers le téléphone 922 Mb/s · charge 742 mA").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub measures: Option<String>,
 }
 
 /// Appareils apparus entre les deux relevés (les plus hauts dans l'arbre :
@@ -89,6 +92,7 @@ pub fn evaluate(before: &Report, after: &Report, link: Option<&LinkDiagnostics>)
                 ),
                 device: None,
                 speed: None,
+                measures: None,
             }
         } else {
             CableVerdict {
@@ -98,6 +102,7 @@ pub fn evaluate(before: &Report, after: &Report, link: Option<&LinkDiagnostics>)
                 detail: "C'est probablement un câble de charge seule (très courant), ou ses fils de données sont coupés. Un appareil USB se signale au PC dès son branchement, même un téléphone verrouillé. Pour en être sûr, vérifiez que l'appareil est bien détecté avec un autre câble sur la même prise.".to_owned(),
                 device: None,
                 speed: None,
+                measures: None,
             }
         };
     };
@@ -123,6 +128,7 @@ pub fn speed_verdict(device: &Device, errors: u32) -> CableVerdict {
         detail,
         device: Some(name.clone()),
         speed: device.speed.map(|s| s.value),
+        measures: None,
     };
 
     if device.problem.is_some() {

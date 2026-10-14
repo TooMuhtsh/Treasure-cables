@@ -117,6 +117,8 @@ export interface CableVerdict {
   detail: string;
   device: string | null;
   speed: string | null;
+  /** Mesures en bref (test avec le téléphone). */
+  measures?: string;
 }
 
 /** Étape de l'assistant « Tester un câble ». */

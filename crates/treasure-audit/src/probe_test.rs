@@ -69,6 +69,7 @@ pub fn evaluate(m: &ProbeMeasurements) -> CableVerdict {
             ),
             device: Some(m.probe_name.clone()),
             speed: m.device.and_then(|d| d.speed).map(|s| s.value),
+            measures: measures_summary(m),
         };
     }
 
@@ -103,12 +104,31 @@ pub fn evaluate(m: &ProbeMeasurements) -> CableVerdict {
             ),
             device: Some(m.probe_name.clone()),
             speed: None,
+            measures: None,
         },
     };
     verdict.detail.push_str(&measured);
     verdict.detail.push_str(&superspeed_sentence(m));
     verdict.detail.push_str(&charge);
+    verdict.measures = measures_summary(m);
     verdict
+}
+
+/// Débit dans chaque sens et charge, en bref.
+fn measures_summary(m: &ProbeMeasurements) -> Option<String> {
+    let parts: Vec<String> = [
+        m.to_computer_mbps
+            .map(|v| format!("vers le PC {}", mbps_label(v))),
+        m.to_probe_mbps
+            .map(|v| format!("vers le téléphone {}", mbps_label(v))),
+        m.charge_current_ma
+            .filter(|ma| *ma > 0)
+            .map(|ma| format!("charge {}", amps_label(ma))),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    (!parts.is_empty()).then(|| parts.join(" · "))
 }
 
 fn throughput_sentence(m: &ProbeMeasurements) -> String {
@@ -245,6 +265,10 @@ mod tests {
             v.detail
         );
         assert_eq!(v.device.as_deref(), Some("samsung SM-S911B"));
+        assert_eq!(
+            v.measures.as_deref(),
+            Some("vers le PC 412 Mb/s · vers le téléphone 1,5 Gb/s · charge 1,25 A")
+        );
     }
 
     #[test]

@@ -93,7 +93,10 @@
           {@const l = verdictLook(r)}
           <li class={l.tone}>
             <Icon name={l.icon} size={18} />
-            <span>Câble {i + 1} : {r.title}{r.device ? ` · ${r.device}` : ''}</span>
+            <span>
+              Câble {i + 1} : {r.title}{r.device ? ` · ${r.device}` : ''}
+              {#if r.measures}<span class="measures">{r.measures}</span>{/if}
+            </span>
           </li>
         {/each}
       </ol>
@@ -204,6 +207,11 @@
     display: flex;
     gap: 8px;
     align-items: center;
+  }
+  .measures {
+    display: block;
+    font-size: 12px;
+    color: var(--md-sys-color-on-surface-variant);
   }
   .results li.ok {
     color: var(--treasure-ok);
