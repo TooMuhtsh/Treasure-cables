@@ -9,7 +9,7 @@
   import Icon from './lib/Icon.svelte';
   import Plugs from './lib/Plugs.svelte';
   import type { IconName } from './lib/icons';
-  import { api, type CableStep, type State } from './lib/api';
+  import { api, applyTheme, type CableStep, type State, type Theme } from './lib/api';
 
   let st = $state<State | null>(null);
   let tab = $state(0);
@@ -27,7 +27,30 @@
     { label: 'Détails', icon: 'devices' },
   ];
 
+  // Ordre du bouton de thème, et ce qu'il annonce.
+  const themes: Record<Theme, { next: Theme; icon: IconName; name: string }> = {
+    auto: { next: 'light', icon: 'themeAuto', name: 'thème automatique' },
+    light: { next: 'dark', icon: 'themeLight', name: 'thème clair' },
+    dark: { next: 'auto', icon: 'themeDark', name: 'thème sombre' },
+  };
+  function themeLabel(t: Theme) {
+    const name = themes[t].name.charAt(0).toUpperCase() + themes[t].name.slice(1);
+    return t === 'auto' ? `${name} (suit ${st?.platform === 'windows' ? 'Windows' : 'le système'})` : name;
+  }
+
   let p = $derived(st?.presentation ?? null);
+  let theme = $derived<Theme>(st?.theme ?? 'auto');
+  $effect(() => applyTheme(theme));
+
+  async function cycleTheme() {
+    const next = themes[theme].next;
+    if (st) st = { ...st, theme: next };
+    try {
+      apply(await api.setTheme(next));
+    } catch (e) {
+      notify(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
   let alerts = $derived(p ? p.summary.problems + p.summary.warnings : 0);
 
   function notify(text: string, tone = 'info') {
@@ -127,6 +150,13 @@
           <Icon name="refresh" />
         </md-icon-button>
       {/if}
+      <md-icon-button
+        title="{themeLabel(theme)} — cliquer pour passer au {themes[themes[theme].next].name}"
+        aria-label="{themeLabel(theme)}. Changer de thème"
+        onclick={cycleTheme}
+      >
+        <Icon name={themes[theme].icon} />
+      </md-icon-button>
       <md-icon-button title="Exporter le rapport (JSON)" aria-label="Exporter" onclick={() => run(api.exportReport)}>
         <Icon name="download" />
       </md-icon-button>

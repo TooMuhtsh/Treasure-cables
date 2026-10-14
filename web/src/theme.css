@@ -1,6 +1,6 @@
 /* Généré par scripts/theme.mjs (couleur de base #005eb8) : ne pas modifier à la main. */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --md-sys-color-primary: #00478d;
   --md-sys-color-on-primary: #ffffff;
   --md-sys-color-primary-container: #005eb8;
@@ -40,7 +40,8 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
     --md-sys-color-primary: #a9c7ff;
     --md-sys-color-on-primary: #003063;
     --md-sys-color-primary-container: #005eb8;
@@ -78,4 +79,44 @@
     --md-sys-color-inverse-on-surface: #2e3037;
     --md-sys-color-inverse-primary: #005db6;
   }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --md-sys-color-primary: #a9c7ff;
+  --md-sys-color-on-primary: #003063;
+  --md-sys-color-primary-container: #005eb8;
+  --md-sys-color-on-primary-container: #c8daff;
+  --md-sys-color-secondary: #b2c7f0;
+  --md-sys-color-on-secondary: #1b3152;
+  --md-sys-color-secondary-container: #32476a;
+  --md-sys-color-on-secondary-container: #a1b6de;
+  --md-sys-color-tertiary: #ffb691;
+  --md-sys-color-on-tertiary: #552000;
+  --md-sys-color-tertiary-container: #9f4300;
+  --md-sys-color-on-tertiary-container: #ffcfb9;
+  --md-sys-color-error: #ffb4ab;
+  --md-sys-color-on-error: #690005;
+  --md-sys-color-error-container: #93000a;
+  --md-sys-color-on-error-container: #ffdad6;
+  --md-sys-color-background: #111319;
+  --md-sys-color-on-background: #e1e2ea;
+  --md-sys-color-surface: #111319;
+  --md-sys-color-on-surface: #e1e2ea;
+  --md-sys-color-surface-variant: #424752;
+  --md-sys-color-on-surface-variant: #c2c6d4;
+  --md-sys-color-surface-dim: #111319;
+  --md-sys-color-surface-bright: #37393f;
+  --md-sys-color-surface-container-lowest: #0b0e14;
+  --md-sys-color-surface-container-low: #191c21;
+  --md-sys-color-surface-container: #1d2025;
+  --md-sys-color-surface-container-high: #272a30;
+  --md-sys-color-surface-container-highest: #32353b;
+  --md-sys-color-outline: #8c919d;
+  --md-sys-color-outline-variant: #424752;
+  --md-sys-color-shadow: #000000;
+  --md-sys-color-scrim: #000000;
+  --md-sys-color-inverse-surface: #e1e2ea;
+  --md-sys-color-inverse-on-surface: #2e3037;
+  --md-sys-color-inverse-primary: #005db6;
 }

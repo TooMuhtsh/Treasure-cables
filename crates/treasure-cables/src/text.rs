@@ -435,7 +435,7 @@ fn print_displays(out: &mut String, report: &Report) {
             if let Some(t) = d.transport {
                 w!(out, "    sortie : {}", t.label());
             }
-            if let Some(link) = &d.link {
+            if let Some(link) = d.dp_link() {
                 let max = match (link.max_lanes, link.max_lane_rate_mbps) {
                     (Some(l), Some(r)) => format!(
                         " ; maximum : {l} voie{} {}",

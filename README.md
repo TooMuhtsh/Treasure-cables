@@ -67,6 +67,8 @@ fenêtre (Edge en mode application, Material Design 3, thème clair ou sombre) :
 - Onglets **Prises** (chaque prise physique, sa façade et ses appareils),
   **Écrans** (liaison, mode natif, part du lien DisplayPort utilisée),
   **Diagnostic** et **Détails** ; rafraîchir et exporter le rapport JSON.
+- Thème clair, sombre ou automatique (suit Windows), mémorisé d'un lancement
+  à l'autre (`%APPDATA%\Treasure Cables\preferences.json`).
 
 L'interface est servie par l'exécutable lui-même, uniquement sur 127.0.0.1 et
 protégée par un jeton aléatoire ; l'outil s'arrête quand la fenêtre est fermée.
@@ -104,3 +106,9 @@ modèle, l'audit et le format de rapport sont communs.
 **Un logiciel peut-il tester un câble seul ?** Non. Il voit ce qui a été négocié
 avec l'appareil au bout du câble. Pour certifier un câble isolé (continuité des
 fils, e-marker sous Windows), il faut un testeur matériel.
+
+## Licence
+
+Au choix, sous licence [MIT](LICENSE-MIT) ou [Apache 2.0](LICENSE-APACHE),
+comme la plupart des projets Rust. Sauf mention contraire, toute contribution
+proposée au projet est placée sous ces deux mêmes licences.

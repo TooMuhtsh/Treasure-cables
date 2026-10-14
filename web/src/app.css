@@ -13,7 +13,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --treasure-ok: #8bd99a;
     --treasure-ok-container: #00531f;
     --treasure-on-ok-container: #a6f5b4;
@@ -21,6 +21,15 @@
     --treasure-warn-container: #693c00;
     --treasure-on-warn-container: #ffdcbe;
   }
+}
+
+:root[data-theme='dark'] {
+  --treasure-ok: #8bd99a;
+  --treasure-ok-container: #00531f;
+  --treasure-on-ok-container: #a6f5b4;
+  --treasure-warn: #ffb870;
+  --treasure-warn-container: #693c00;
+  --treasure-on-warn-container: #ffdcbe;
 }
 
 * {

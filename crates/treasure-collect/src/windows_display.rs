@@ -51,6 +51,15 @@ pub fn displays() -> Vec<Display> {
         let a = p.sourceInfo.adapterId;
         (a.LowPart, a.HighPart, p.sourceInfo.id)
     };
+    let dp_on_source = |path: &DISPLAYCONFIG_PATH_INFO| {
+        paths
+            .iter()
+            .filter(|p| {
+                source(p) == source(path)
+                    && connection(p.targetInfo.outputTechnology).carries_displayport()
+            })
+            .count()
+    };
     paths
         .iter()
         .zip(&adapters)
@@ -68,8 +77,13 @@ pub fn displays() -> Vec<Display> {
                     display.transport = output.transport;
                     display.link = output.link.clone();
                 } else if adapter_upper.contains("VEN_10DE")
+                    && display.connection.is_some_and(|c| c.carries_displayport())
+                    && dp_on_source(path) == 1
                     && let (Some(nv), Some(gdi)) = (&nvidia, gdi_name(path))
                 {
+                    // NVAPI désigne l'écran par le nom de sa source : en
+                    // affichage dupliqué, ce nom est partagé. On ne s'y fie
+                    // que si l'écran est le seul en DisplayPort sur la source.
                     display.link = nv.dp_link(&gdi);
                 }
             }

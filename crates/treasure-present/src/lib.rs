@@ -566,7 +566,7 @@ fn display_view(d: &Display) -> DisplayView {
         mirrored: d.mirrored,
         transport: d.transport.map(|t| t.label()),
         gpu: d.gpu.clone(),
-        link: d.link.as_ref().map(|link| LinkUsage {
+        link: d.dp_link().map(|link| LinkUsage {
             label: link.label(),
             max: match (link.max_lanes, link.max_lane_rate_mbps) {
                 (Some(l), Some(r)) => Some(format!(
@@ -587,6 +587,39 @@ fn display_view(d: &Display) -> DisplayView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Affichage dupliqué ANMITE (DisplayPort) + écran 4K en HDMI : les
+    /// versions précédentes donnaient à l'écran HDMI le lien de l'ANMITE
+    /// (« 299 % du lien »).
+    #[test]
+    fn hdmi_display_never_shows_a_displayport_link() {
+        let json = include_str!("../../../examples/rapport-windows-reel.json");
+        let mut report: Report = serde_json::from_str(json).unwrap();
+        let anmite = report
+            .displays
+            .iter()
+            .find(|d| d.name.as_deref() == Some("ANMITE"))
+            .unwrap()
+            .clone();
+        report.displays.push(treasure_model::Display {
+            name: Some("PC Monitor".into()),
+            connection: Some(treasure_model::DisplayConnection::Hdmi),
+            width: Some(3840),
+            height: Some(2160),
+            native_width: Some(3840),
+            native_height: Some(2160),
+            mirrored: true,
+            ..anmite
+        });
+        let p = present(&report);
+        let monitor = p.displays.iter().find(|d| d.name == "PC Monitor").unwrap();
+        assert!(monitor.link.is_none());
+        assert!(
+            p.findings.iter().all(|f| !f.subject.contains("PC Monitor")),
+            "{:?}",
+            p.findings
+        );
+    }
 
     #[test]
     fn real_windows_report() {

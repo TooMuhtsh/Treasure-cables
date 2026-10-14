@@ -322,6 +322,16 @@ impl Display {
         ))
     }
 
+    /// Lien DisplayPort, s'il est cohérent avec la liaison : un lien relevé
+    /// sur un écran HDMI vient d'un autre écran (rapports des versions qui
+    /// confondaient les écrans en affichage dupliqué) et est ignoré.
+    pub fn dp_link(&self) -> Option<&DpLink> {
+        self.link.as_ref().filter(|_| {
+            self.connection
+                .is_none_or(DisplayConnection::carries_displayport)
+        })
+    }
+
     /// Débit approximatif nécessaire au mode actuel, en Gb/s.
     pub fn current_bandwidth_gbps(&self) -> Option<f64> {
         Some(mode_bandwidth_gbps(
@@ -361,6 +371,15 @@ impl DisplayConnection {
             DisplayConnection::Wireless => "sans fil (Miracast)",
             DisplayConnection::Other => "autre",
         }
+    }
+
+    /// Liaison qui transporte un signal DisplayPort (et peut donc avoir un
+    /// lien DisplayPort mesurable).
+    pub fn carries_displayport(self) -> bool {
+        matches!(
+            self,
+            DisplayConnection::DisplayPort | DisplayConnection::DisplayPortUsbTunnel
+        )
     }
 
     pub fn is_external_cable(self) -> bool {

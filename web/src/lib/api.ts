@@ -115,6 +115,8 @@ export interface CableVerdict {
 /** Étape de l'assistant « Tester un câble ». */
 export type CableStep = 'closed' | 'intro' | 'watch' | 'verdict';
 
+export type Theme = 'auto' | 'light' | 'dark';
+
 export interface State {
   presentation: Presentation | null;
   error: string | null;
@@ -126,6 +128,7 @@ export interface State {
   cable_results: CableVerdict[];
   deep: { elapsed_s: number; events: number } | null;
   message: { level: 'ok' | 'error' | 'elevation'; text: string } | null;
+  theme: Theme;
 }
 
 // Le jeton arrive dans l'adresse ouverte par l'application ; on le garde
@@ -159,6 +162,7 @@ export const api = {
   deepStart: () => call('POST', 'deep/start'),
   deepFinish: () => call('POST', 'deep/finish'),
   elevate: () => call('POST', 'elevate'),
+  setTheme: (theme: Theme) => call('POST', `theme/${theme}`),
   /** La fenêtre se ferme : le serveur s'arrête s'il n'a plus de nouvelles. */
   bye: () => {
     fetch('./api/bye', { method: 'POST', keepalive: true, headers: { 'X-Token': token } }).catch(() => {});
@@ -171,4 +175,10 @@ export function speedRatio(mbps: number | null): number {
   const min = Math.log10(1);
   const max = Math.log10(80_000);
   return Math.max(0.04, Math.min(1, (Math.log10(mbps) - min) / (max - min)));
+}
+
+/** Applique un thème à la page (« auto » suit le système). */
+export function applyTheme(theme: Theme) {
+  if (theme === 'auto') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = theme;
 }

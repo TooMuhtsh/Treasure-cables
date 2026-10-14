@@ -272,7 +272,7 @@ fn check_display(display: &Display, out: &mut Vec<Finding>) {
             Confidence::Likely,
             "L'affichage est dupliqué : Windows applique la même résolution à tous les écrans. Choisissez « Étendre » ou « Deuxième écran uniquement » (touches Windows + P) pour retrouver le mode natif. Le câble n'est pas en cause.".to_owned(),
         )
-    } else if let Some(link) = &display.link {
+    } else if let Some(link) = display.dp_link() {
         // Le lien réel est connu : il tranche.
         if link.capacity_gbps() >= required {
             return; // le lien transporte le mode natif : c'est un réglage

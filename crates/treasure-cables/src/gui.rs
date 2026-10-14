@@ -22,6 +22,7 @@ use treasure_model::Report;
 use treasure_present::Presentation;
 
 use crate::export;
+use crate::prefs::{self, Prefs, Theme};
 use crate::session::{self, CableWatch, DEEP_TIMEOUT};
 
 mod assets {
@@ -63,6 +64,7 @@ pub fn run(config: Config) -> io::Result<()> {
         closing_since: None,
         exit: false,
         message: None,
+        prefs: prefs::load(),
     };
     app.report = match config.fixed_report {
         Some(report) => Ok(report),
@@ -124,6 +126,7 @@ struct App {
     exit: bool,
     /// Message ponctuel pour l'interface (affiché une fois).
     message: Option<Message>,
+    prefs: Prefs,
 }
 
 #[derive(Serialize, Clone)]
@@ -145,6 +148,7 @@ struct State<'a> {
     cable_results: &'a [CableVerdict],
     deep: Option<DeepState>,
     message: Option<Message>,
+    theme: Theme,
 }
 
 #[derive(Serialize)]
@@ -176,6 +180,20 @@ impl App {
                 path.trim_start_matches('/')
             };
             return match assets::ASSETS.iter().find(|(n, _)| *n == name) {
+                // Le thème choisi est posé dès la page servie : pas
+                // d'éclair clair avant l'application du thème sombre.
+                Some((n, data)) if *n == "index.html" => {
+                    let html = String::from_utf8_lossy(data);
+                    let html = match self.prefs.theme.attribute() {
+                        Some(theme) => html.replacen(
+                            "<html lang=\"fr\">",
+                            &format!("<html lang=\"fr\" data-theme=\"{theme}\">"),
+                            1,
+                        ),
+                        None => html.into_owned(),
+                    };
+                    respond(request, 200, mime(n), html.into_bytes())
+                }
                 Some((n, data)) => respond(request, 200, mime(n), data.to_vec()),
                 None => respond(request, 404, "text/plain", b"Not found".to_vec()),
             };
@@ -209,6 +227,16 @@ impl App {
             (Method::Post, "/api/cable/clear") => self.cable_results.clear(),
             (Method::Post, "/api/deep/start") if self.live => self.start_deep(),
             (Method::Post, "/api/deep/finish") => self.finish_deep(),
+            (Method::Post, p) if p.starts_with("/api/theme/") => {
+                match Theme::parse(&p["/api/theme/".len()..]) {
+                    Some(theme) => {
+                        self.prefs.theme = theme;
+                        // Un échec d'écriture ne gêne que le prochain lancement.
+                        let _ = prefs::save(&self.prefs);
+                    }
+                    None => return respond(request, 400, "text/plain", b"Bad request".to_vec()),
+                }
+            }
             (Method::Post, "/api/elevate") => match treasure_collect::relaunch_elevated("--deep") {
                 Ok(()) => {
                     self.message = Some(Message {
@@ -244,6 +272,7 @@ impl App {
                 events: capture.events(),
             }),
             message: self.message.take(),
+            theme: self.prefs.theme,
         };
         serde_json::to_string(&state).unwrap_or_else(|_| "{}".to_owned())
     }

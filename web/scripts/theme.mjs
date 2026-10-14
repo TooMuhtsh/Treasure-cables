@@ -35,16 +35,25 @@ function block(dark) {
     .join('\n');
 }
 
+// Clair par défaut ; sombre si le système le demande (choix « automatique »)
+// ou si l'utilisateur l'a choisi (attribut data-theme posé par l'application).
+const dark = block(true);
 const css = `/* Généré par scripts/theme.mjs (couleur de base ${SEED}) : ne pas modifier à la main. */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 ${block(false)}
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-${block(true).replace(/^/gm, '  ')}
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+${dark.replace(/^/gm, '  ')}
   }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+${dark}
 }
 `;
 writeFileSync(new URL('../src/theme.css', import.meta.url), css);

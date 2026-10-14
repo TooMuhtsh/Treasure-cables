@@ -1,6 +1,7 @@
 {
   "name": "treasure-cables-web",
   "private": true,
+  "license": "MIT OR Apache-2.0",
   "version": "0.1.0",
   "description": "Interface de Treasure Cables (fenêtre de l'application et futur site web)",
   "type": "module",
