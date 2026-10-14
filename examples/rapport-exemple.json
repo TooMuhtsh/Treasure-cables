@@ -19,9 +19,9 @@
             "speed": { "value": "high", "source": "negotiated" },
             "max_speed": { "value": "gen2x1", "source": "declared" },
             "lanes": { "rx": 1, "tx": 1 }, "max_power_ma": 896, "is_hub": false,
-            "port": { "number": 2, "connector": "type_c",
+            "port": { "location": "1-2", "number": 2, "connector": "type_c",
                       "max_speed": { "value": "gen2x1", "source": "declared" },
-                      "companion": "usb2-port2" },
+                      "companion": "2-2" },
             "problem": null
           }
         ]

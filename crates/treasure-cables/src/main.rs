@@ -1,12 +1,13 @@
 //! Version portable de Treasure Cables (ligne de commande).
 
 mod menu;
+mod render;
 
 use std::io::IsTerminal;
 use std::process::ExitCode;
 
 use treasure_audit::{Confidence, Finding, Severity};
-use treasure_model::{Connector, Device, Report, Source, Sourced, Speed};
+use treasure_model::Report;
 
 const USAGE: &str = "\
 Treasure Cables : audit des ports, câbles et appareils USB
@@ -14,11 +15,12 @@ Treasure Cables : audit des ports, câbles et appareils USB
 Usage : treasure-cables [options]
 
 Sans option, dans une console : diagnostic et menu interactif
-(rafraîchir, diagnostic approfondi, exporter le rapport JSON, quitter).
+(rafraîchir, vue détaillée, diagnostic approfondi, exporter en JSON, quitter).
 
 Options :
   --json             Écrit le rapport JSON (à partager ou à ouvrir sur le site)
   --input <fichier>  Audite un rapport JSON existant au lieu de la machine
+  --details          Vue détaillée (arbre par contrôleur) au lieu de la vue par prise
   --deep             Ouvre directement le diagnostic approfondi (administrateur)
   --include-serials  Inclut les numéros de série (exclus par défaut)
   -V, --version      Affiche la version
@@ -26,6 +28,7 @@ Options :
 
 struct Args {
     json: bool,
+    details: bool,
     deep: bool,
     input: Option<String>,
     include_serials: bool,
@@ -34,6 +37,7 @@ struct Args {
 fn parse_args() -> Result<Args, String> {
     let mut args = Args {
         json: false,
+        details: false,
         deep: false,
         input: None,
         include_serials: false,
@@ -43,6 +47,7 @@ fn parse_args() -> Result<Args, String> {
         match arg.as_str() {
             "--json" => args.json = true,
             "--deep" => args.deep = true,
+            "--details" => args.details = true,
             "--include-serials" => args.include_serials = true,
             "--input" => args.input = Some(it.next().ok_or("--input attend un fichier")?),
             "-V" | "--version" => {
@@ -108,7 +113,7 @@ fn main() -> ExitCode {
         println!("{}", to_json(&report));
         return ExitCode::SUCCESS;
     }
-    print_report(&report);
+    print_report(&report, args.details);
     ExitCode::SUCCESS
 }
 
@@ -116,109 +121,20 @@ fn to_json(report: &Report) -> String {
     serde_json::to_string_pretty(report).expect("rapport sérialisable")
 }
 
-fn print_report(report: &Report) {
+fn print_report(report: &Report, detailed: bool) {
     println!(
-        "Treasure Cables {} ({})\n",
+        "Treasure Cables {} ({}) · {}\n",
         env!("CARGO_PKG_VERSION"),
-        env!("TREASURE_BUILD")
+        env!("TREASURE_BUILD"),
+        report.host.os_version.as_deref().unwrap_or(&report.host.os)
     );
-    print_tree(report);
+    render::print_usb(report, detailed);
     print_displays(report);
     print_link_diagnostics(report);
     print_findings(&treasure_audit::audit(report));
     for note in &report.notes {
         println!("ℹ {note}");
     }
-}
-
-fn print_tree(report: &Report) {
-    println!(
-        "Appareils USB ({})",
-        report.host.os_version.as_deref().unwrap_or(&report.host.os)
-    );
-    for bus in &report.buses {
-        let controller = bus
-            .controller
-            .as_deref()
-            .map(|c| format!(" [{c}]"))
-            .unwrap_or_default();
-        println!(
-            "\n{}{controller} : {}",
-            bus.id,
-            ports_summary(&bus.root_hub)
-        );
-        for (i, child) in bus.root_hub.children.iter().enumerate() {
-            print_device(child, "", i + 1 == bus.root_hub.children.len());
-        }
-    }
-    if !report.typec_ports.is_empty() {
-        println!("\nPorts USB-C");
-        for port in &report.typec_ports {
-            let roles = [port.data_role.as_deref(), port.power_role.as_deref()]
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>()
-                .join(", ");
-            let state = if port.partner.is_some() {
-                "connecté"
-            } else {
-                "libre"
-            };
-            println!(
-                "  {} : {state}{}",
-                port.id,
-                if roles.is_empty() {
-                    String::new()
-                } else {
-                    format!(" ({roles})")
-                }
-            );
-            if let Some(vdo) = port.cable.as_ref().and_then(|c| c.emarker) {
-                let speed = vdo
-                    .highest_speed
-                    .map(|s| s.label())
-                    .unwrap_or("vitesse inconnue");
-                let power = vdo
-                    .max_power_w()
-                    .map(|w| format!(", {w} W max"))
-                    .unwrap_or_default();
-                println!("    câble (e-marker) : {speed}{power}");
-            }
-        }
-    }
-}
-
-/// "4 ports : 2 USB 3.x, 2 USB 2.0 ; dont 2 USB-C".
-fn ports_summary(hub: &Device) -> String {
-    let ports: Vec<_> = hub
-        .ports
-        .iter()
-        .filter(|p| p.connector != Some(Connector::Internal))
-        .collect();
-    if ports.is_empty() {
-        return speed_text(hub.speed, None);
-    }
-    let usb3 = ports
-        .iter()
-        .filter(|p| p.max_speed.is_some_and(|s| s.value.is_superspeed()))
-        .count();
-    let type_c = ports
-        .iter()
-        .filter(|p| p.connector == Some(Connector::TypeC))
-        .count();
-    let mut text = format!("{} ports accessibles", ports.len());
-    let mut kinds = Vec::new();
-    if usb3 > 0 {
-        kinds.push(format!("{usb3} USB 3.x"));
-    }
-    if ports.len() > usb3 {
-        kinds.push(format!("{} USB 2.0", ports.len() - usb3));
-    }
-    text.push_str(&format!(" ({})", kinds.join(", ")));
-    if type_c > 0 {
-        text.push_str(&format!(", dont {type_c} USB-C"));
-    }
-    text
 }
 
 fn print_link_diagnostics(report: &Report) {
@@ -315,44 +231,6 @@ fn print_displays(report: &Report) {
             };
             println!("  {} : {role}", r.name);
         }
-    }
-}
-
-fn print_device(device: &Device, prefix: &str, last: bool) {
-    let branch = if last { "└─ " } else { "├─ " };
-    let ids = match (device.vendor_id, device.product_id) {
-        (Some(v), Some(p)) => format!(" ({v:04x}:{p:04x})"),
-        _ => String::new(),
-    };
-    let type_c = device
-        .port
-        .as_ref()
-        .is_some_and(|p| p.connector == Some(Connector::TypeC));
-    println!(
-        "{prefix}{branch}{} {}{ids}{} : {}",
-        device.location,
-        device.display_name(),
-        if type_c { " [USB-C]" } else { "" },
-        speed_text(device.speed, device.max_speed)
-    );
-    let child_prefix = format!("{prefix}{}", if last { "   " } else { "│  " });
-    for (i, child) in device.children.iter().enumerate() {
-        print_device(child, &child_prefix, i + 1 == device.children.len());
-    }
-}
-
-fn speed_text(speed: Option<Sourced<Speed>>, max: Option<Sourced<Speed>>) -> String {
-    let current = speed.map(|s| s.value.label()).unwrap_or("vitesse inconnue");
-    match max {
-        Some(m) if speed.is_some_and(|s| s.value < m.value) => {
-            let how = if m.source == Source::Inferred {
-                "probablement capable de"
-            } else {
-                "capable de"
-            };
-            format!("{current}, {how} {}", m.value.label())
-        }
-        _ => current.to_owned(),
     }
 }
 

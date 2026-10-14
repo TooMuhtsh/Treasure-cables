@@ -47,7 +47,7 @@ USB ni les vitesses de lien (WebUSB ne le permet pas), d'où ce découpage.
 | Plateforme | Collecte |
 |---|---|
 | Linux | ✅ Arbre USB, vitesses négociées et voies, capacités (BOS, Linux 6.6+), ports compagnons USB 2/3, ports USB-C et e-marker des câbles (`/sys/class/typec`) |
-| Windows | 🧪 À valider sur matériel réel. Parcours des hubs sans droits administrateur : vitesse réelle, capacités SuperSpeed(Plus), voies, port USB-C et compagnon, BOS et modes alternatifs (Billboard), consommation, codes de problème. Voir [la recherche](docs/recherche-sources-windows.md). |
+| Windows | ✅ Testé sur Windows 11 : parcours des hubs sans droits administrateur (vitesse réelle, capacités SuperSpeed(Plus), voies, prises USB-C et leurs deux moitiés, BOS et modes alternatifs, consommation, codes de problème), écrans (liaison, mode natif). 🧪 À valider : lien DisplayPort réel via les pilotes Intel (IGCL) et NVIDIA (NVAPI), diagnostic approfondi (écoute ETW, administrateur). Voir [la recherche](docs/recherche-sources-windows.md). |
 | Web | 🔜 Après la version portable |
 
 ## Utilisation
@@ -57,14 +57,23 @@ de la CI GitHub Actions) et double-cliquez dessus. Le diagnostic s'affiche avec
 un menu :
 
 ```
-[R] Rafraîchir   [E] Exporter le rapport (JSON)   [Q] Quitter
+[R] Rafraîchir   [V] Vue détaillée   [D] Diagnostic approfondi   [E] Exporter (JSON)   [Q] Quitter
 ```
 
-- **Rafraîchir** (ou F5) : relance l'analyse, pratique pour comparer deux câbles.
-- **Exporter** : enregistre `rapport-treasure-cables-AAAAMMJJ-HHMMSS.json` (sans
-  numéros de série) à côté de l'exécutable, à partager ou à ouvrir sur le site.
+- **Vue par prise** (par défaut) : chaque prise physique (USB-C, USB-A) avec ce
+  qu'elle sait faire et ce qui y est branché, hubs et docks compris ; les
+  appareils internes à part.
+- **Vue détaillée** (V) : arbre par contrôleur, avec pour chaque appareil
+  vitesse et capacité (mesurée, déclarée ou déduite), version USB,
+  consommation, voies, port et port jumeau, modes alternatifs.
+- **Rafraîchir** (R ou F5) : relance l'analyse, pratique pour comparer deux câbles.
+- **Diagnostic approfondi** (D, administrateur) : écoute la pile USB pendant
+  que vous débranchez et rebranchez ; les erreurs de lien sont la preuve la
+  plus directe d'un câble ou d'un connecteur défaillant.
+- **Exporter** (E) : enregistre `rapport-treasure-cables-AAAAMMJJ-HHMMSS.json`
+  (sans numéros de série) à côté de l'exécutable, à partager ou à ouvrir sur le site.
 
-Pour les scripts, les options restent disponibles (`--json`, `--input`, `--help`).
+Pour les scripts, les options restent disponibles (`--json`, `--input`, `--details`, `--deep`, `--help`).
 
 **Depuis les sources** :
 

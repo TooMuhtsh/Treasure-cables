@@ -203,6 +203,7 @@ impl Walker<'_> {
                 Some(d) => d.port.clone(),
                 None => Some(self.port_info(
                     port,
+                    &here,
                     connection_info_v2(&hub, port),
                     connector.as_ref(),
                     None,
@@ -336,7 +337,7 @@ impl Walker<'_> {
             (m, _) => m,
         };
         device.speed = speed;
-        device.port = Some(self.port_info(port, v2, connector, speed));
+        device.port = Some(self.port_info(port, location, v2, connector, speed));
 
         if is_hub && let Some(name) = connection_name(hub, port) {
             (device.ports, device.children) = self.hub_ports(&device_path(&name), location);
@@ -360,6 +361,7 @@ impl Walker<'_> {
     fn port_info(
         &mut self,
         port: u32,
+        location: &str,
         v2: Option<V2Info>,
         connector: Option<&ConnectorInfo>,
         speed: Option<Sourced<Speed>>,
@@ -404,6 +406,7 @@ impl Walker<'_> {
             }
         });
         PortInfo {
+            location: Some(location.to_owned()),
             number: u8::try_from(port).ok(),
             connector: connector_kind,
             max_speed,

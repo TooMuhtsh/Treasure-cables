@@ -56,6 +56,20 @@ impl Speed {
         }
     }
 
+    /// Débit seul, pour les affichages compacts.
+    pub fn short(self) -> &'static str {
+        match self {
+            Speed::Low => "1,5 Mb/s",
+            Speed::Full => "12 Mb/s",
+            Speed::High => "480 Mb/s",
+            Speed::Gen1x1 => "5 Gb/s",
+            Speed::Gen1x2 | Speed::Gen2x1 => "10 Gb/s",
+            Speed::Gen2x2 | Speed::Usb4Gen2 => "20 Gb/s",
+            Speed::Usb4Gen3 => "40 Gb/s",
+            Speed::Usb4Gen4 => "80 Gb/s",
+        }
+    }
+
     /// Vrai pour toutes les vitesses SuperSpeed et au-delà (paires USB 3 utilisées).
     pub fn is_superspeed(self) -> bool {
         self.mbps() >= 5_000

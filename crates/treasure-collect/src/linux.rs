@@ -185,7 +185,7 @@ fn read_port(usb_dir: &Path, dir: &Path) -> Option<PortInfo> {
     let companion = peer
         .as_ref()
         .and_then(|p| p.file_name())
-        .map(|n| n.to_string_lossy().into_owned());
+        .and_then(|n| port_location(&n.to_string_lossy()));
 
     // Capacité du port : la vitesse du hub qui le porte, et celle du hub
     // qui porte son compagnon.
@@ -212,6 +212,7 @@ fn read_port(usb_dir: &Path, dir: &Path) -> Option<PortInfo> {
         .map(Sourced::declared);
 
     Some(PortInfo {
+        location: port_location(&port_name),
         number,
         connector,
         max_speed,
@@ -282,6 +283,16 @@ fn read_typec_port(dir: &Path, name: &str) -> TypeCPort {
         partner,
         cable,
     }
+}
+
+/// Nom de port sysfs -> emplacement : "usb2-port3" -> "2-3", "1-4-port2" -> "1-4.2".
+fn port_location(name: &str) -> Option<String> {
+    let (parent, port) = name.rsplit_once("-port")?;
+    let port: u32 = port.parse().ok()?;
+    Some(match parent.strip_prefix("usb") {
+        Some(bus) => format!("{bus}-{port}"),
+        None => format!("{parent}.{port}"),
+    })
 }
 
 /// "host [device]" -> "device" : sysfs met le choix actif entre crochets.
@@ -484,7 +495,8 @@ mod tests {
 
         let port = ssd.port.as_ref().unwrap();
         assert_eq!(port.number, Some(2));
-        assert_eq!(port.companion.as_deref(), Some("usb2-port2"));
+        assert_eq!(port.companion.as_deref(), Some("2-2"));
+        assert_eq!(port.location.as_deref(), Some("1-2"));
         assert_eq!(port.max_speed, Some(Sourced::declared(Speed::Gen2x1)));
     }
 
@@ -550,5 +562,8 @@ mod tests {
         assert_eq!(parent_of("usb3"), None);
         assert_eq!(depth("1-2.3"), 2);
         assert_eq!(selected("host [device]"), "device");
+        assert_eq!(port_location("usb2-port3").as_deref(), Some("2-3"));
+        assert_eq!(port_location("1-4-port2").as_deref(), Some("1-4.2"));
+        assert_eq!(port_location("port0"), None);
     }
 }

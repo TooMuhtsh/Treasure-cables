@@ -15,30 +15,45 @@ use crate::{print_report, to_json};
 
 enum Action {
     Refresh,
+    Details,
     Deep,
     Export,
     Quit,
 }
 
-const MENU: &str = "[R] Rafraîchir   [D] Diagnostic approfondi   [E] Exporter (JSON)   [Q] Quitter";
+fn menu(detailed: bool) -> String {
+    let view = if detailed {
+        "Vue simple"
+    } else {
+        "Vue détaillée"
+    };
+    format!(
+        "[R] Rafraîchir   [V] {view}   [D] Diagnostic approfondi   [E] Exporter (JSON)   [Q] Quitter"
+    )
+}
 
 pub fn run(options: &Options, start_deep: bool) -> io::Result<()> {
     let mut report = analyse(options)?;
+    let mut detailed = false;
     if start_deep && let Some(r) = deep_session(options)? {
         report = Ok(r);
     }
     loop {
         clear()?;
         match &report {
-            Ok(r) => print_report(r),
+            Ok(r) => print_report(r, detailed),
             Err(e) => println!("Erreur pendant l'analyse : {e}"),
         }
         loop {
-            println!("\n{MENU}");
+            println!("\n{}", menu(detailed));
             io::stdout().flush()?;
             match read_key()? {
                 Action::Refresh => {
                     report = analyse(options)?;
+                    break;
+                }
+                Action::Details => {
+                    detailed = !detailed;
                     break;
                 }
                 Action::Deep => {
@@ -178,6 +193,7 @@ fn read_key() -> io::Result<Action> {
                     KeyCode::Char(c) => match c.to_ascii_lowercase() {
                         'r' => Some(Action::Refresh),
                         'd' => Some(Action::Deep),
+                        'v' => Some(Action::Details),
                         'e' => Some(Action::Export),
                         'q' => Some(Action::Quit),
                         _ => None,

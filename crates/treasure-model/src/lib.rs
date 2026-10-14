@@ -6,6 +6,7 @@
 
 mod speed;
 pub mod typec;
+pub mod view;
 
 pub use speed::Speed;
 
@@ -133,11 +134,15 @@ pub enum Connector {
 /// Informations sur le port amont d'un appareil (le port du hub où il est branché).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PortInfo {
+    /// Emplacement du port, au même format que celui des appareils ("2-17").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
     pub number: Option<u8>,
     pub connector: Option<Connector>,
     /// Vitesse maximale que le port sait faire.
     pub max_speed: Option<Sourced<Speed>>,
-    /// Port compagnon (le même connecteur vu sur l'autre bus : USB 2 <-> USB 3).
+    /// Emplacement du port compagnon (le même connecteur vu sur l'autre bus :
+    /// USB 2 <-> USB 3).
     pub companion: Option<String>,
 }
 
