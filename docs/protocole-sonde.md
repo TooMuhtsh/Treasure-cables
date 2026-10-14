@@ -150,7 +150,7 @@ un résultat : la liaison a lâché.
 Le logiciel accepte la variable d'environnement `TREASURE_PROBE`
 (`adresse` ou `adresse:port`) pour joindre une sonde sans partage de connexion,
 par exemple la sonde de développement de l'application
-(`TREASURE_PROBE_SERVE=60 ./gradlew :app:testDebugUnitTest` dans `android/`).
+(`TREASURE_PROBE_SERVE=60 ./gradlew :app:testDebugUnitTest --rerun` dans `android/`).
 
 ## Évolution
 

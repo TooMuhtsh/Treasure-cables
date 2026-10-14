@@ -35,6 +35,8 @@ data class UiState(
     val status: String? = null,
     val testing: Boolean = false,
     val verdict: ProbeEvent.Verdict? = null,
+    /** Interfaces réseau vues (« rndis0 192.168.42.129 »), pour le diagnostic. */
+    val interfaces: List<String> = emptyList(),
 )
 
 /**
@@ -61,7 +63,8 @@ class ProbeViewModel(application: Application) : AndroidViewModel(application), 
     }
 
     private fun refresh() {
-        val address = usbTetherAddress()
+        val interfaces = ipv4Interfaces()
+        val address = usbTetherAddress(interfaces)
         if (address != serverAddress) {
             server?.close()
             server = null
@@ -75,6 +78,7 @@ class ProbeViewModel(application: Application) : AndroidViewModel(application), 
                 tetherAddress = address?.hostAddress,
                 battery = battery(),
                 usbConnected = usbConnected(),
+                interfaces = interfaces.map { (name, ip) -> "$name ${ip.hostAddress}" },
             )
         }
     }

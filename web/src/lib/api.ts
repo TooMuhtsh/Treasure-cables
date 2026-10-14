@@ -128,6 +128,8 @@ export interface ProbeProgress {
   phase: 'searching' | 'approval' | 'measuring';
   text: string;
   probe: string | null;
+  /** Ce que voit la recherche du téléphone. */
+  detail: string | null;
 }
 
 export type Theme = 'auto' | 'light' | 'dark';

@@ -49,6 +49,7 @@
           <p class="big">{st.probe?.text ?? 'Préparation…'}</p>
           {#if st.probe?.phase === 'searching'}
             <p class="muted">Application ouverte et partage de connexion USB activé ? Le téléphone est cherché pendant 2 minutes.</p>
+            {#if st.probe.detail}<p class="muted"><Icon name="info" size={16} /> {st.probe.detail}</p>{/if}
           {/if}
         </div>
       </div>

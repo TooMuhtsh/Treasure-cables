@@ -270,16 +270,30 @@ fun normalizeCurrentUa(raw: Int, charging: Boolean): Long? {
 }
 
 /**
+ * Interfaces réseau qui ont une adresse IPv4 (nom et adresse). Chaque
+ * interface est lue à part : Android refuse certaines lectures aux
+ * applications (état actif/inactif notamment), une erreur ne doit pas tout
+ * faire échouer.
+ */
+fun ipv4Interfaces(): List<Pair<String, java.net.Inet4Address>> {
+    val interfaces = runCatching { java.net.NetworkInterface.getNetworkInterfaces()?.toList().orEmpty() }
+        .getOrDefault(emptyList())
+    return interfaces.mapNotNull { nif ->
+        runCatching {
+            nif.inetAddresses.toList()
+                .filterIsInstance<java.net.Inet4Address>()
+                .firstOrNull { !it.isLoopbackAddress }
+                ?.let { nif.name to it }
+        }.getOrNull()
+    }
+}
+
+/**
  * Adresse IPv4 de l'interface du partage de connexion USB (rndis0, ncm0,
  * usb0…), ou `null` si le partage n'est pas actif.
  */
-fun usbTetherAddress(): InetAddress? =
-    runCatching {
-        java.net.NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
-            .filter { it.isUp && isUsbTetherInterface(it.name) }
-            .flatMap { it.inetAddresses.toList() }
-            .firstOrNull { it is java.net.Inet4Address && !it.isLoopbackAddress }
-    }.getOrNull()
+fun usbTetherAddress(interfaces: List<Pair<String, InetAddress>> = ipv4Interfaces()): InetAddress? =
+    interfaces.firstOrNull { isUsbTetherInterface(it.first) }?.second
 
 fun isUsbTetherInterface(name: String): Boolean =
     listOf("rndis", "ncm", "usb").any { name.startsWith(it) }

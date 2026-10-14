@@ -115,7 +115,7 @@ cd android
 ./gradlew :app:testDebugUnitTest :app:assembleDebug   # SDK Android requis (ANDROID_HOME)
 ```
 
-Sans téléphone, `TREASURE_PROBE_SERVE=60 ./gradlew :app:testDebugUnitTest` sert une sonde
+Sans téléphone, `TREASURE_PROBE_SERVE=60 ./gradlew :app:testDebugUnitTest --rerun` sert une sonde
 de développement sur 127.0.0.1 ; lancez alors le logiciel avec `TREASURE_PROBE=127.0.0.1`.
 
 ## FAQ

@@ -133,6 +133,11 @@ private fun StatusCard(state: UiState, onOpenSettings: () -> Unit) {
                         "S'il est grisé ou absent, le câble ne transporte peut-être pas les données.",
                         style = MaterialTheme.typography.bodySmall,
                     )
+                    Text(
+                        "Réseaux vus par l'application : " +
+                            state.interfaces.ifEmpty { listOf("aucun") }.joinToString(", "),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
                 plugged -> {
                     Title("Le téléphone se charge, sans échange de données")

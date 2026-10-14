@@ -5,7 +5,7 @@
 //! fenêtre suit son avancement et récupère le verdict à la fin.
 
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{IpAddr, Shutdown, SocketAddr, TcpStream, ToSocketAddrs};
+use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -38,6 +38,8 @@ pub struct ProbeProgress {
     pub text: String,
     /// Nom de la sonde, une fois connue ("samsung SM-S911B").
     pub probe: Option<String>,
+    /// Ce que voit la recherche (carte réseau du partage, réponse de l'application).
+    pub detail: Option<String>,
 }
 
 pub struct ProbeTest {
@@ -52,6 +54,7 @@ impl ProbeTest {
             phase: "searching",
             text: "Recherche du téléphone…".to_owned(),
             probe: None,
+            detail: None,
         }));
         let cancel = Arc::new(AtomicBool::new(false));
         let session = Session {
@@ -78,6 +81,7 @@ impl ProbeTest {
                 phase: "measuring",
                 text: String::new(),
                 probe: None,
+                detail: None,
             })
     }
 
@@ -237,16 +241,36 @@ impl Session {
         let started = Instant::now();
         loop {
             self.cancelled()?;
-            for address in candidates() {
-                if let Ok(stream) = TcpStream::connect_timeout(&address, Duration::from_millis(800))
-                {
-                    return Ok((stream, address));
+            let candidates = candidates();
+            let mut seen = Vec::new();
+            for candidate in &candidates {
+                if candidate.address.ip().is_unspecified() {
+                    seen.push((candidate, std::io::ErrorKind::AddrNotAvailable));
+                    continue;
+                }
+                match TcpStream::connect_timeout(&candidate.address, Duration::from_millis(800)) {
+                    Ok(stream) => {
+                        self.set_detail(None);
+                        return Ok((stream, candidate.address));
+                    }
+                    Err(e) if candidate.usb => seen.push((candidate, e.kind())),
+                    Err(_) => {}
                 }
             }
+            let detail = search_detail(&seen);
+            self.set_detail(Some(detail.clone()));
             if started.elapsed() > SEARCH_TIMEOUT {
-                return Err("Le téléphone n'a pas été trouvé. Vérifiez que l'application Treasure Probe est ouverte et que le partage de connexion USB est activé. Si le téléphone ne propose pas ce partage, ou indique « pas de transfert de données », le câble ne transporte probablement pas les données.".to_owned());
+                return Err(format!(
+                    "Le téléphone n'a pas été trouvé. {detail} Vérifiez que l'application Treasure Probe est ouverte et que le partage de connexion USB est activé. Si le téléphone ne propose pas ce partage, ou indique « pas de transfert de données », le câble ne transporte probablement pas les données."
+                ));
             }
             std::thread::sleep(Duration::from_secs(1));
+        }
+    }
+
+    fn set_detail(&self, detail: Option<String>) {
+        if let Ok(mut p) = self.progress.lock() {
+            p.detail = detail;
         }
     }
 
@@ -258,8 +282,21 @@ impl Session {
     }
 }
 
-/// Adresses où chercher une sonde.
-fn candidates() -> Vec<SocketAddr> {
+/// Une adresse où chercher une sonde.
+struct Candidate {
+    address: SocketAddr,
+    /// Carte réseau d'un partage de connexion USB (sinon : essai de secours).
+    usb: bool,
+    /// Description de la carte réseau.
+    label: String,
+}
+
+/// Adresses où chercher une sonde : les passerelles des partages USB
+/// d'abord, puis celles des autres cartes actives, au cas où Windows nomme
+/// la carte du partage autrement que prévu (la poignée de main confirme
+/// qu'il s'agit bien d'une sonde). Une carte de partage sans passerelle est
+/// signalée avec une adresse non spécifiée.
+fn candidates() -> Vec<Candidate> {
     if let Ok(target) = std::env::var(PROBE_ENV) {
         let target = if target.contains(':') {
             target
@@ -268,13 +305,68 @@ fn candidates() -> Vec<SocketAddr> {
         };
         return target
             .to_socket_addrs()
-            .map(|a| a.collect())
-            .unwrap_or_default();
+            .map(|a| a.collect::<Vec<_>>())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|address| Candidate {
+                address,
+                usb: true,
+                label: PROBE_ENV.to_owned(),
+            })
+            .collect();
     }
-    treasure_collect::network::usb_tether_gateways()
+    let mut adapters: Vec<_> = treasure_collect::network::adapters()
         .into_iter()
-        .map(|ip| SocketAddr::new(IpAddr::V4(ip), CONTROL_PORT))
-        .collect()
+        .filter(|a| a.up || a.usb_tether)
+        .collect();
+    adapters.sort_by_key(|a| !a.usb_tether);
+    let mut out: Vec<Candidate> = Vec::new();
+    for adapter in adapters {
+        let label = if adapter.description.is_empty() {
+            adapter.name.clone()
+        } else {
+            adapter.description.clone()
+        };
+        if adapter.usb_tether && adapter.gateways.is_empty() {
+            out.push(Candidate {
+                address: SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), CONTROL_PORT),
+                usb: true,
+                label,
+            });
+            continue;
+        }
+        for ip in adapter.gateways {
+            if !out.iter().any(|c| c.address.ip() == IpAddr::V4(ip)) {
+                out.push(Candidate {
+                    address: SocketAddr::new(IpAddr::V4(ip), CONTROL_PORT),
+                    usb: adapter.usb_tether,
+                    label: label.clone(),
+                });
+            }
+        }
+    }
+    out
+}
+
+/// Explique l'état de la recherche, d'après les cartes du partage USB vues.
+fn search_detail(seen: &[(&Candidate, std::io::ErrorKind)]) -> String {
+    let Some((candidate, error)) = seen.first() else {
+        return "L'ordinateur ne voit aucune carte réseau de partage de connexion USB.".to_owned();
+    };
+    let label = &candidate.label;
+    let ip = candidate.address.ip();
+    if ip.is_unspecified() {
+        return format!(
+            "Partage USB vu (« {label} »), mais le téléphone ne lui a pas encore donné d'adresse."
+        );
+    }
+    if *error == std::io::ErrorKind::ConnectionRefused {
+        format!(
+            "Partage USB vu (« {label} », téléphone en {ip}), mais l'application ne répond pas : affiche-t-elle « Prêt à tester le câble » ?"
+        )
+    } else {
+        format!("Partage USB vu (« {label} », téléphone en {ip}), mais le téléphone ne répond pas.")
+    }
 }
 
 /// Une mesure de débit sur le port de données ; renvoie des Mb/s. Une erreur

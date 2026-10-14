@@ -118,7 +118,7 @@ class ProbeServerTest {
     }
 
     /**
-     * Sonde de développement : `TREASURE_PROBE_SERVE=60 ./gradlew :app:testDebugUnitTest`
+     * Sonde de développement : `TREASURE_PROBE_SERVE=60 ./gradlew :app:testDebugUnitTest --rerun`
      * sert la sonde sur 127.0.0.1:47820 pendant 60 s, pour essayer le logiciel
      * sans téléphone (`TREASURE_PROBE=127.0.0.1 treasure-cables`).
      */
@@ -148,5 +148,13 @@ class ProbeServerTest {
         assertTrue(isUsbTetherInterface("ncm0"))
         assertTrue(!isUsbTetherInterface("wlan0"))
         assertTrue(!isUsbTetherInterface("rmnet_data0"))
+    }
+
+    @Test
+    fun tetherAddressIsPickedAmongInterfaces() {
+        val wifi = java.net.InetAddress.getByName("192.168.1.20") as java.net.Inet4Address
+        val usb = java.net.InetAddress.getByName("192.168.42.129") as java.net.Inet4Address
+        assertEquals(usb, usbTetherAddress(listOf("wlan0" to wifi, "rndis0" to usb)))
+        assertNull(usbTetherAddress(listOf("wlan0" to wifi)))
     }
 }
