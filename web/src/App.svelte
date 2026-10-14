@@ -98,9 +98,30 @@
       timer = setTimeout(loop, active ? 1000 : 30000);
     };
     timer = setTimeout(loop, 1000);
+
+    // Branchements et débranchements : le serveur répond à cette attente
+    // dès qu'il a refait l'analyse.
+    let stopped = false;
+    const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const watch = async () => {
+      while (!stopped) {
+        if (!st?.live || handedOff) {
+          await pause(2000);
+          continue;
+        }
+        try {
+          apply(await api.wait(st.version));
+        } catch {
+          await pause(3000); // serveur arrêté ou occupé : on réessaie
+        }
+      }
+    };
+    watch();
+
     const bye = () => api.bye();
     addEventListener('pagehide', bye);
     return () => {
+      stopped = true;
       clearTimeout(timer);
       removeEventListener('pagehide', bye);
     };

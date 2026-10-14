@@ -16,8 +16,8 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tiny_http::{Header, Method, Request, Response, Server};
-use treasure_audit::cable_test::CableVerdict;
-use treasure_collect::{DeepCapture, Options};
+use treasure_audit::cable_test::{self, CableVerdict};
+use treasure_collect::{ChangeWatcher, DeepCapture, Options};
 use treasure_model::Report;
 use treasure_present::Presentation;
 
@@ -33,6 +33,11 @@ mod assets {
 /// navigateurs ralentissent les minuteries des fenêtres réduites (une par
 /// minute au plus) : le délai doit rester large.
 const IDLE_TIMEOUT: Duration = Duration::from_secs(180);
+/// Après un branchement, délai sans nouvel événement avant de relancer
+/// l'analyse : l'appareil finit de se présenter (pilotes, vitesse).
+const CHANGE_SETTLE: Duration = Duration::from_millis(1500);
+/// Durée maximale d'une attente de la fenêtre (`/api/wait`).
+const WAIT_TIMEOUT: Duration = Duration::from_secs(25);
 
 pub struct Config {
     pub options: Options,
@@ -65,7 +70,16 @@ pub fn run(config: Config) -> io::Result<()> {
         exit: false,
         message: None,
         prefs: prefs::load(),
+        watcher: None,
+        seen_changes: 0,
+        pending_change: None,
+        version: 0,
+        waiters: Vec::new(),
     };
+    if live {
+        app.watcher = ChangeWatcher::start();
+        app.seen_changes = app.watcher.as_ref().map_or(0, ChangeWatcher::count);
+    }
     app.report = match config.fixed_report {
         Some(report) => Ok(report),
         None => treasure_collect::collect(&app.options).map_err(|e| e.to_string()),
@@ -127,6 +141,15 @@ struct App {
     /// Message ponctuel pour l'interface (affiché une fois).
     message: Option<Message>,
     prefs: Prefs,
+    /// Branchements et débranchements : l'analyse est relancée seule.
+    watcher: Option<ChangeWatcher>,
+    seen_changes: u64,
+    /// Dernier changement signalé, pas encore analysé.
+    pending_change: Option<Instant>,
+    /// Version du rapport, augmentée à chaque analyse automatique.
+    version: u64,
+    /// Requêtes de la fenêtre laissées ouvertes jusqu'à la prochaine version.
+    waiters: Vec<(Request, Instant)>,
 }
 
 #[derive(Serialize, Clone)]
@@ -149,6 +172,7 @@ struct State<'a> {
     deep: Option<DeepState>,
     message: Option<Message>,
     theme: Theme,
+    version: u64,
 }
 
 #[derive(Serialize)]
@@ -207,13 +231,25 @@ impl App {
         let method = request.method().clone();
         match (method, path.as_str()) {
             (Method::Get, "/api/state") | (Method::Post, "/api/heartbeat") => {}
+            // Attente d'une nouvelle analyse : la réponse part au prochain
+            // branchement ou débranchement (ou au bout de WAIT_TIMEOUT).
+            (Method::Get, "/api/wait") => {
+                let since = url
+                    .split_once("v=")
+                    .and_then(|(_, v)| v.split('&').next())
+                    .and_then(|v| v.parse::<u64>().ok());
+                if self.watcher.is_some() && since == Some(self.version) {
+                    self.waiters.push((request, Instant::now()));
+                    return;
+                }
+            }
             (Method::Post, "/api/bye") => {
                 // La fenêtre se ferme... ou se recharge : on attend un peu.
                 self.closing_since = Some(Instant::now());
                 return respond(request, 204, "text/plain", Vec::new());
             }
             (Method::Post, "/api/refresh") if self.live => {
-                self.report = treasure_collect::collect(&self.options).map_err(|e| e.to_string());
+                self.report = self.collect_keeping_diagnostics();
             }
             (Method::Post, "/api/export") => self.export(),
             (Method::Post, "/api/cable/start") if self.live => {
@@ -273,11 +309,42 @@ impl App {
             }),
             message: self.message.take(),
             theme: self.prefs.theme,
+            version: self.version,
         };
         serde_json::to_string(&state).unwrap_or_else(|_| "{}".to_owned())
     }
 
     fn tick(&mut self) {
+        if let Some(watcher) = &self.watcher {
+            let count = watcher.count();
+            if count != self.seen_changes {
+                self.seen_changes = count;
+                self.pending_change = Some(Instant::now());
+            }
+        }
+        if self
+            .pending_change
+            .is_some_and(|t| t.elapsed() >= CHANGE_SETTLE)
+        {
+            self.pending_change = None;
+            // Pendant un test de câble ou une écoute, c'est leur propre
+            // analyse finale qui compte (et qui sert de point de comparaison).
+            if self.cable.is_none() && self.deep.is_none() {
+                self.auto_refresh();
+            }
+        }
+        if self
+            .waiters
+            .iter()
+            .any(|(_, since)| since.elapsed() >= WAIT_TIMEOUT)
+        {
+            let (expired, waiting) = std::mem::take(&mut self.waiters)
+                .into_iter()
+                .partition(|(_, since)| since.elapsed() >= WAIT_TIMEOUT);
+            self.waiters = waiting;
+            self.answer(expired);
+        }
+
         if let Some(watch) = &mut self.cable {
             watch.poll(&self.options);
             if watch.is_done() {
@@ -290,6 +357,62 @@ impl App {
             .is_some_and(|(_, started)| started.elapsed() >= DEEP_TIMEOUT)
         {
             self.finish_deep();
+        }
+    }
+
+    /// Nouvelle analyse après un branchement ou un débranchement, annoncée
+    /// à la fenêtre avec les appareils apparus ou disparus.
+    fn auto_refresh(&mut self) {
+        let Ok(after) = self.collect_keeping_diagnostics() else {
+            return; // l'analyse manuelle reste possible
+        };
+        if let Ok(before) = &self.report {
+            let names = |devices: Vec<&treasure_model::Device>| {
+                devices
+                    .iter()
+                    .map(|d| d.display_name())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            let added = names(cable_test::new_devices(before, &after));
+            let removed = names(cable_test::new_devices(&after, before));
+            let mut parts = Vec::new();
+            if !added.is_empty() {
+                parts.push(format!("branché : {added}"));
+            }
+            if !removed.is_empty() {
+                parts.push(format!("débranché : {removed}"));
+            }
+            if !parts.is_empty() {
+                self.message = Some(Message {
+                    level: "ok",
+                    text: parts.join(" · "),
+                });
+            }
+        }
+        self.report = Ok(after);
+        self.version += 1;
+        let waiters = std::mem::take(&mut self.waiters);
+        self.answer(waiters);
+    }
+
+    /// Nouvelle analyse ; le bilan d'un diagnostic approfondi passé est
+    /// conservé (il porte sur la période d'écoute, toujours valable).
+    fn collect_keeping_diagnostics(&self) -> Result<Report, String> {
+        let mut report = treasure_collect::collect(&self.options).map_err(|e| e.to_string())?;
+        if let Ok(previous) = &self.report {
+            report.link_diagnostics = previous.link_diagnostics.clone();
+        }
+        Ok(report)
+    }
+
+    fn answer(&mut self, waiters: Vec<(Request, Instant)>) {
+        if waiters.is_empty() {
+            return;
+        }
+        let body = self.state_json();
+        for (request, _) in waiters {
+            respond(request, 200, "application/json", body.clone().into_bytes());
         }
     }
 

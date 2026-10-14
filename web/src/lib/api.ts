@@ -129,6 +129,8 @@ export interface State {
   deep: { elapsed_s: number; events: number } | null;
   message: { level: 'ok' | 'error' | 'elevation'; text: string } | null;
   theme: Theme;
+  /** Version du rapport, augmentée à chaque analyse automatique. */
+  version: number;
 }
 
 // Le jeton arrive dans l'adresse ouverte par l'application ; on le garde
@@ -153,6 +155,8 @@ async function call(method: 'GET' | 'POST', path: string): Promise<State> {
 
 export const api = {
   state: () => call('GET', 'state'),
+  /** Répond au prochain branchement ou débranchement (ou après 25 s). */
+  wait: (version: number) => call('GET', `wait?v=${version}`),
   refresh: () => call('POST', 'refresh'),
   exportReport: () => call('POST', 'export'),
   cableStart: () => call('POST', 'cable/start'),

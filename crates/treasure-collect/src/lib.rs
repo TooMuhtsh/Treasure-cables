@@ -5,6 +5,8 @@
 
 pub mod bos;
 pub mod deep;
+pub mod watch;
+pub use watch::ChangeWatcher;
 #[cfg(target_os = "linux")]
 pub mod linux;
 #[cfg(windows)]

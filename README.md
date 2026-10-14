@@ -67,6 +67,8 @@ fenêtre (Edge en mode application, Material Design 3, thème clair ou sombre) :
 - Onglets **Prises** (chaque prise physique, sa façade et ses appareils),
   **Écrans** (liaison, mode natif, part du lien DisplayPort utilisée),
   **Diagnostic** et **Détails** ; rafraîchir et exporter le rapport JSON.
+- Mise à jour automatique : brancher ou débrancher un appareil USB ou un
+  écran relance l'analyse et l'annonce (« Branché : … »), sans bouton.
 - Thème clair, sombre ou automatique (suit Windows), mémorisé d'un lancement
   à l'autre (`%APPDATA%\Treasure Cables\preferences.json`).
 
