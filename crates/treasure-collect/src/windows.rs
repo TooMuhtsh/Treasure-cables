@@ -31,8 +31,9 @@ use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
 };
 use windows_sys::Win32::Devices::Properties::{
     DEVPKEY_Device_Address, DEVPKEY_Device_BusNumber, DEVPKEY_Device_BusReportedDeviceDesc,
-    DEVPKEY_Device_DeviceDesc, DEVPKEY_Device_Driver, DEVPKEY_Device_FriendlyName,
-    DEVPKEY_Device_InstanceId, DEVPKEY_Device_PowerData, DEVPKEY_Device_Service,
+    DEVPKEY_Device_CompatibleIds, DEVPKEY_Device_DeviceDesc, DEVPKEY_Device_Driver,
+    DEVPKEY_Device_FriendlyName, DEVPKEY_Device_InstanceId, DEVPKEY_Device_PowerData,
+    DEVPKEY_Device_Service,
 };
 use windows_sys::Win32::Devices::Usb::{
     GUID_DEVINTERFACE_USB_HOST_CONTROLLER, IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION,
@@ -835,6 +836,33 @@ fn locate_devnode(instance_id: &str) -> Option<u32> {
     // SAFETY: identifiant terminé par un zéro.
     let r = unsafe { CM_Locate_DevNodeW(&mut devinst, id.as_ptr(), CM_LOCATE_DEVNODE_NORMAL) };
     (r == CR_SUCCESS).then_some(devinst)
+}
+
+/// Fonctions réseau des appareils USB (RNDIS, NCM, ECM) et l'état de leur
+/// pilote : un partage de connexion sans pilote ne crée aucune carte réseau.
+pub(crate) fn usb_network_functions() -> Vec<crate::network::UsbNetFunction> {
+    device_id_list(Some("USB"))
+        .iter()
+        .filter_map(|id| {
+            let devinst = locate_devnode(id)?;
+            let bytes = devnode_property(devinst, &DEVPKEY_Device_CompatibleIds)?;
+            let units: Vec<u16> = bytes
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|c| u16::from_le_bytes(*c))
+                .collect();
+            let kind = crate::network::network_function_kind(&split_multi_sz(&units))?;
+            Some(crate::network::UsbNetFunction {
+                description: devnode_string(devinst, &DEVPKEY_Device_BusReportedDeviceDesc)
+                    .or_else(|| devnode_string(devinst, &DEVPKEY_Device_DeviceDesc))
+                    .unwrap_or_else(|| id.clone()),
+                kind,
+                problem: devnode_problem(devinst),
+                driver: devnode_string(devinst, &DEVPKEY_Device_Service),
+            })
+        })
+        .collect()
 }
 
 /// Contrôleurs USB par adresse PCI (bus, appareil, fonction), avec le même

@@ -21,6 +21,53 @@ pub struct Adapter {
     pub usb_tether: bool,
 }
 
+/// Fonction réseau d'un appareil USB (le partage de connexion d'un téléphone
+/// en est une), avec l'état de son pilote : sans pilote, Windows ne crée
+/// aucune carte réseau.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UsbNetFunction {
+    pub description: String,
+    /// `RNDIS`, `NCM` ou `ECM`.
+    pub kind: &'static str,
+    /// Code de problème du gestionnaire de périphériques (28 : pas de pilote).
+    pub problem: Option<u32>,
+    /// Service du pilote installé ("usb_rndis", "UsbNcm").
+    pub driver: Option<String>,
+}
+
+/// Reconnaît une fonction réseau USB d'après ses identifiants compatibles.
+pub fn network_function_kind(compatible_ids: &[String]) -> Option<&'static str> {
+    let ids: Vec<String> = compatible_ids
+        .iter()
+        .map(|i| i.to_ascii_lowercase())
+        .collect();
+    let has = |pattern: &str| ids.iter().any(|i| i.contains(pattern));
+    if has("class_e0&subclass_01&prot_03")
+        || has("class_ef&subclass_04&prot_01")
+        || has("class_02&subclass_02&prot_ff")
+    {
+        Some("RNDIS")
+    } else if has("class_02&subclass_0d") {
+        Some("NCM")
+    } else if has("class_02&subclass_06") {
+        Some("ECM")
+    } else {
+        None
+    }
+}
+
+/// Fonctions réseau des appareils USB branchés.
+pub fn usb_network_functions() -> Vec<UsbNetFunction> {
+    #[cfg(windows)]
+    {
+        crate::windows::usb_network_functions()
+    }
+    #[cfg(not(windows))]
+    {
+        Vec::new()
+    }
+}
+
 impl Adapter {
     /// Adresses où peut se trouver l'autre bout de la liaison (le téléphone
     /// dans un partage de connexion) : passerelles, puis serveur DHCP.
@@ -126,7 +173,8 @@ pub fn adapters() -> Vec<Adapter> {
         let mut gateways = Vec::new();
         let mut gateway = a.FirstGatewayAddress;
         while let Some(g) = unsafe { gateway.as_ref() } {
-            gateways.extend(ipv4(g.Address.lpSockaddr));
+            // 0.0.0.0 : pas de passerelle (tunnels VPN notamment).
+            gateways.extend(ipv4(g.Address.lpSockaddr).filter(|ip| !ip.is_unspecified()));
             gateway = g.Next;
         }
         let mut addresses = Vec::new();
@@ -219,6 +267,27 @@ mod tests {
         assert!(!is_usb_tether_description(
             "Realtek PCIe GbE Family Controller"
         ));
+    }
+
+    #[test]
+    fn network_functions_from_compatible_ids() {
+        let ids = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            network_function_kind(&ids(&[
+                "USB\\Class_E0&SubClass_01&Prot_03",
+                "USB\\Class_E0&SubClass_01",
+                "USB\\Class_E0"
+            ])),
+            Some("RNDIS")
+        );
+        assert_eq!(
+            network_function_kind(&ids(&["USB\\Class_02&SubClass_0D&Prot_00"])),
+            Some("NCM")
+        );
+        assert_eq!(
+            network_function_kind(&ids(&["USB\\Class_08&SubClass_06&Prot_50"])),
+            None
+        );
     }
 
     #[test]

@@ -245,7 +245,9 @@ impl Session {
             let mut seen = Vec::new();
             for candidate in &candidates {
                 if candidate.address.ip().is_unspecified() {
-                    seen.push((candidate, std::io::ErrorKind::AddrNotAvailable));
+                    if candidate.usb {
+                        seen.push((candidate, std::io::ErrorKind::AddrNotAvailable));
+                    }
                     continue;
                 }
                 match TcpStream::connect_timeout(&candidate.address, Duration::from_millis(800)) {
@@ -356,7 +358,7 @@ fn candidates() -> (Vec<Candidate>, Vec<String>) {
 /// suivi de la liste des cartes actives.
 fn search_detail(seen: &[(&Candidate, std::io::ErrorKind)], adapters: &[String]) -> String {
     let head = match seen.first() {
-        None => "L'ordinateur ne voit aucune carte réseau de partage de connexion USB.".to_owned(),
+        None => no_tether_adapter(&treasure_collect::network::usb_network_functions()),
         Some((candidate, error)) => {
             let label = &candidate.label;
             let ip = candidate.address.ip();
@@ -377,6 +379,36 @@ fn search_detail(seen: &[(&Candidate, std::io::ErrorKind)], adapters: &[String])
         head
     } else {
         format!("{head} Cartes réseau actives : {}.", adapters.join(" ; "))
+    }
+}
+
+/// Aucune carte réseau de partage n'est active : la fonction de partage du
+/// téléphone est-elle vue en USB, et a-t-elle un pilote ?
+fn no_tether_adapter(functions: &[treasure_collect::network::UsbNetFunction]) -> String {
+    let Some(function) = functions
+        .iter()
+        .find(|f| f.problem.is_some() || f.driver.is_none())
+        .or(functions.first())
+    else {
+        return "L'ordinateur ne voit ni carte réseau de partage, ni fonction de partage du côté USB : le partage de connexion USB est-il activé sur le téléphone, et ce câble transporte-t-il les données ?".to_owned();
+    };
+    let name = &function.description;
+    let kind = function.kind;
+    match (function.problem, &function.driver) {
+        (Some(28), _) | (None, None) => format!(
+            "Le téléphone propose son partage de connexion (« {name} », {kind}), mais Windows n'a pas de pilote pour lui. Dans le Gestionnaire de périphériques, sur « {name} » : Mettre à jour le pilote, Parcourir mon poste de travail, Choisir parmi une liste, Cartes réseau, Microsoft, puis « {} ». Le pilote USB du fabricant du téléphone convient aussi.",
+            if kind == "NCM" {
+                "UsbNcm Host Device"
+            } else {
+                "Remote NDIS Compatible Device"
+            }
+        ),
+        (Some(problem), _) => format!(
+            "Le téléphone propose son partage de connexion (« {name} », {kind}), mais Windows le signale en erreur (code {problem}) dans le Gestionnaire de périphériques : désactivé ou mal installé."
+        ),
+        (None, Some(driver)) => format!(
+            "Le téléphone propose son partage de connexion (« {name} », pilote {driver}), mais aucune carte réseau active n'en résulte : vérifiez qu'elle n'est pas désactivée dans les connexions réseau de Windows."
+        ),
     }
 }
 
