@@ -74,7 +74,7 @@ fun ProbeScreen(model: ProbeViewModel = viewModel()) {
         ) {
             StatusCard(state, onOpenSettings = { model.openTetherSettings(context) })
             state.verdict?.let { VerdictCard(it) }
-            state.battery?.let { BatteryCard(it) }
+            state.battery?.let { BatteryCard(it, computer = state.usbConnected) }
             Text(
                 "Treasure Probe sert de testeur au logiciel Treasure Cables : l'ordinateur fait passer des données " +
                     "par le câble dans les deux sens, et le téléphone rapporte la charge qu'il reçoit.",
@@ -171,7 +171,7 @@ private fun VerdictCard(verdict: ProbeEvent.Verdict) {
 }
 
 @Composable
-private fun BatteryCard(battery: BatteryReading) {
+private fun BatteryCard(battery: BatteryReading, computer: Boolean) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Title("Charge")
@@ -179,7 +179,9 @@ private fun BatteryCard(battery: BatteryReading) {
                 "Source",
                 when (battery.plugged) {
                     "usb" -> "port USB d'ordinateur"
-                    "ac" -> "chargeur"
+                    // Un port USB-C d'ordinateur qui annonce 1,5 ou 3 A est
+                    // classé « chargeur » par Android.
+                    "ac" -> if (computer) "port USB-C d'ordinateur (charge renforcée)" else "chargeur"
                     "wireless" -> "sans fil"
                     "dock" -> "station d'accueil"
                     "none" -> "non branché"

@@ -228,7 +228,14 @@ impl Session {
         measures.device = probe_test::find_probe_device(&report, manufacturer, model);
         let verdict = probe_test::evaluate(&measures);
 
-        let severity = serde_json::to_value(verdict.severity).unwrap_or(Value::Null);
+        // Même teinte que la fenêtre : un verdict positif est « ok ».
+        let severity = if verdict.outcome == treasure_audit::cable_test::Outcome::Ok
+            && verdict.severity == treasure_audit::Severity::Info
+        {
+            json!("ok")
+        } else {
+            serde_json::to_value(verdict.severity).unwrap_or(Value::Null)
+        };
         let _ = control.send(&json!({
             "type": "verdict",
             "severity": severity,

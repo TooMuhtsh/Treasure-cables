@@ -73,7 +73,14 @@ pub fn evaluate(m: &ProbeMeasurements) -> CableVerdict {
     }
 
     let mut verdict = match m.device {
-        Some(device) => speed_verdict(device, m.link_errors),
+        Some(device) => {
+            let mut v = speed_verdict(device, m.link_errors);
+            // Le nom USB est souvent générique ("SAMSUNG_Android") : le
+            // modèle annoncé par la sonde parle davantage.
+            v.detail = v.detail.replace(&device.display_name(), &m.probe_name);
+            v.device = Some(m.probe_name.clone());
+            v
+        }
         None => CableVerdict {
             outcome: Outcome::Ok,
             severity: if m.link_errors > 0 {
@@ -99,6 +106,7 @@ pub fn evaluate(m: &ProbeMeasurements) -> CableVerdict {
         },
     };
     verdict.detail.push_str(&measured);
+    verdict.detail.push_str(&superspeed_sentence(m));
     verdict.detail.push_str(&charge);
     verdict
 }
@@ -118,6 +126,26 @@ fn throughput_sentence(m: &ProbeMeasurements) -> String {
         " Débit mesuré à travers le câble : {} (le téléphone et le partage de connexion le plafonnent ; il montre surtout que la liaison tient sous charge).",
         parts.join(", ")
     )
+}
+
+/// Ce que le débit mesuré prouve sur les fils USB 3 du câble.
+fn superspeed_sentence(m: &ProbeMeasurements) -> String {
+    let negotiated_superspeed = m
+        .device
+        .and_then(|d| d.speed)
+        .is_some_and(|s| s.value.is_superspeed());
+    let best = m
+        .to_computer_mbps
+        .into_iter()
+        .chain(m.to_probe_mbps)
+        .fold(0.0, f64::max);
+    if !negotiated_superspeed || best == 0.0 {
+        String::new()
+    } else if best > 480.0 {
+        " Plus de 480 Mb/s ont circulé, au-delà de ce que permet l'USB 2.0 : les fils USB 3 du câble fonctionnent réellement.".to_owned()
+    } else {
+        " Le débit est resté sous celui de l'USB 2.0 malgré le lien USB 3 : c'est souvent la limite du téléphone, mais si un autre câble fait nettement mieux, celui-ci est en cause.".to_owned()
+    }
 }
 
 fn charge_sentence(m: &ProbeMeasurements) -> String {
@@ -206,6 +234,17 @@ mod tests {
             v.detail
         );
         assert!(v.detail.contains("1,25 A entrent"), "{}", v.detail);
+        assert!(
+            v.detail.contains("fils USB 3 du câble fonctionnent"),
+            "{}",
+            v.detail
+        );
+        assert!(
+            v.detail.starts_with("samsung SM-S911B fonctionne"),
+            "{}",
+            v.detail
+        );
+        assert_eq!(v.device.as_deref(), Some("samsung SM-S911B"));
     }
 
     #[test]
