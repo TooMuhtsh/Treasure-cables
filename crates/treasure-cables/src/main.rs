@@ -1,12 +1,12 @@
 //! Version portable de Treasure Cables (ligne de commande).
 
-mod menu;
-mod render;
+mod export;
+mod text;
+mod tui;
 
 use std::io::IsTerminal;
 use std::process::ExitCode;
 
-use treasure_audit::{Confidence, Finding, Severity};
 use treasure_model::Report;
 
 const USAGE: &str = "\
@@ -87,7 +87,7 @@ fn main() -> ExitCode {
         && std::io::stdin().is_terminal()
         && std::io::stdout().is_terminal();
     if interactive {
-        return match menu::run(&options, args.deep) {
+        return match tui::run(&options, args.deep) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("Erreur : {e}");
@@ -114,154 +114,10 @@ fn main() -> ExitCode {
         println!("{}", to_json(&report));
         return ExitCode::SUCCESS;
     }
-    print_report(&report, args.details);
+    print!("{}", text::plain(&report, args.details));
     ExitCode::SUCCESS
 }
 
 fn to_json(report: &Report) -> String {
     serde_json::to_string_pretty(report).expect("rapport sérialisable")
-}
-
-fn print_report(report: &Report, detailed: bool) {
-    println!(
-        "Treasure Cables {} ({}) · {}\n",
-        env!("CARGO_PKG_VERSION"),
-        env!("TREASURE_BUILD"),
-        report.host.os_version.as_deref().unwrap_or(&report.host.os)
-    );
-    render::print_usb(report, detailed);
-    print_displays(report);
-    print_link_diagnostics(report);
-    print_findings(&treasure_audit::audit(report));
-    for note in &report.notes {
-        println!("ℹ {note}");
-    }
-}
-
-fn print_link_diagnostics(report: &Report) {
-    let Some(diagnostics) = &report.link_diagnostics else {
-        return;
-    };
-    println!(
-        "\nDiagnostic approfondi ({} s d'écoute)",
-        diagnostics.duration_s
-    );
-    if diagnostics.ports.is_empty() {
-        println!("  Aucun branchement USB détecté pendant l'écoute.");
-    }
-    for port in &diagnostics.ports {
-        let place = port
-            .location
-            .clone()
-            .or_else(|| port.port.map(|p| format!("port {p}")))
-            .unwrap_or_else(|| "port inconnu".to_owned());
-        let name = port
-            .location
-            .as_deref()
-            .and_then(|loc| report.devices().find(|d| d.location == loc))
-            .map(|d| d.display_name())
-            .or_else(|| port.device_name.clone())
-            .or_else(|| match (port.vendor_id, port.product_id) {
-                (Some(v), Some(p)) => Some(format!("{v:04x}:{p:04x}")),
-                _ => None,
-            })
-            .map(|n| format!(" {n}"))
-            .unwrap_or_default();
-        let errors = port.link_errors();
-        let verdict = if errors == 0 {
-            "aucune erreur".to_owned()
-        } else {
-            format!("{errors} erreur(s) de lien")
-        };
-        println!(
-            "  {place}{name} : {} branchement(s) reconnu(s), {verdict}",
-            port.connections
-        );
-    }
-}
-
-fn print_displays(report: &Report) {
-    if !report.displays.is_empty() {
-        println!("\nÉcrans");
-        for d in &report.displays {
-            let name = d.name.as_deref().unwrap_or("Écran");
-            let connection = d
-                .connection
-                .map(|c| c.label())
-                .unwrap_or("liaison inconnue");
-            let mode = match (d.width, d.height, d.refresh_hz) {
-                (Some(w), Some(h), Some(hz)) => format!("{w}×{h} à {hz:.0} Hz"),
-                (Some(w), Some(h), None) => format!("{w}×{h}"),
-                _ => "mode inconnu".to_owned(),
-            };
-            let native = match (d.native_width, d.native_height, d.native_refresh_hz) {
-                (Some(w), Some(h), Some(hz)) => format!(" (natif : {w}×{h} à {hz:.0} Hz)"),
-                _ => String::new(),
-            };
-            let mirrored = if d.mirrored {
-                ", affichage dupliqué"
-            } else {
-                ""
-            };
-            println!("  {name} : {connection}, {mode}{native}{mirrored}");
-            if let Some(t) = d.transport {
-                println!("    sortie : {}", t.label());
-            }
-            if let Some(link) = &d.link {
-                let max = match (link.max_lanes, link.max_lane_rate_mbps) {
-                    (Some(l), Some(r)) => format!(
-                        " ; maximum : {l} voie{} {}",
-                        if l > 1 { "s" } else { "" },
-                        treasure_model::DpLink::rate_name(r)
-                    ),
-                    _ => String::new(),
-                };
-                println!("    lien DisplayPort : {}{max}", link.label());
-                if let Some(needed) = d.current_bandwidth_gbps() {
-                    let share = needed / link.capacity_gbps() * 100.0;
-                    println!(
-                        "    mode actuel : environ {} Gb/s, soit {share:.0} % du lien",
-                        format!("{needed:.1}").replace('.', ",")
-                    );
-                }
-            }
-            if let Some(gpu) = &d.gpu {
-                println!("    carte graphique : {gpu}");
-            }
-        }
-    }
-    if !report.usb4_routers.is_empty() {
-        println!("\nUSB4 / Thunderbolt");
-        for r in &report.usb4_routers {
-            let role = if r.host {
-                "routeur de l'ordinateur"
-            } else {
-                "appareil USB4 branché"
-            };
-            println!("  {} : {role}", r.name);
-        }
-    }
-}
-
-fn print_findings(findings: &[Finding]) {
-    println!();
-    if findings.is_empty() {
-        println!("✔ Aucun problème détecté.");
-        return;
-    }
-    println!("Diagnostic");
-    for f in findings {
-        let icon = match f.severity {
-            Severity::Problem => "✖",
-            Severity::Warning => "⚠",
-            Severity::Info => "ℹ",
-        };
-        let confidence = match f.confidence {
-            Confidence::Certain => "certain",
-            Confidence::Likely => "probable",
-            Confidence::Possible => "possible",
-        };
-        println!("{icon} [{}] {} ({confidence})", f.subject, f.title);
-        println!("    {}", f.detail);
-    }
 }

@@ -12,3 +12,4 @@ treasure-model.workspace = true
 treasure-audit.workspace = true
 treasure-collect.workspace = true
 crossterm = { version = "0.28", default-features = false, features = ["events", "windows"] }
+ratatui = { version = "0.29", default-features = false, features = ["crossterm"] }

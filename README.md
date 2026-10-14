@@ -53,25 +53,20 @@ USB ni les vitesses de lien (WebUSB ne le permet pas), d'où ce découpage.
 ## Utilisation
 
 **Windows** : téléchargez `treasure-cables.exe` (artefact `treasure-cables-windows-x64`
-de la CI GitHub Actions) et double-cliquez dessus. Le diagnostic s'affiche avec
-un menu :
+de la CI GitHub Actions) et double-cliquez dessus. Une interface plein écran
+s'ouvre, avec des onglets (Prises · Détails · Écrans · Diagnostic) et une barre
+de raccourcis :
 
-```
-[R] Rafraîchir   [V] Vue détaillée   [D] Diagnostic approfondi   [E] Exporter (JSON)   [Q] Quitter
-```
-
-- **Vue par prise** (par défaut) : chaque prise physique (USB-C, USB-A) avec ce
-  qu'elle sait faire et ce qui y est branché, hubs et docks compris ; les
-  appareils internes à part.
-- **Vue détaillée** (V) : arbre par contrôleur, avec pour chaque appareil
-  vitesse et capacité (mesurée, déclarée ou déduite), version USB,
-  consommation, voies, port et port jumeau, modes alternatifs.
-- **Rafraîchir** (R ou F5) : relance l'analyse, pratique pour comparer deux câbles.
-- **Diagnostic approfondi** (D, administrateur) : écoute la pile USB pendant
+- **C — Tester un câble** : débranchez l'appareil, branchez-le avec le câble à
+  tester ; verdict immédiat (charge seule, limité à l'USB 2.0, défaillant,
+  correct) et tableau comparatif des câbles testés.
+- **R — Rafraîchir** (ou F5) : relance l'analyse.
+- **D — Diagnostic approfondi** (administrateur) : écoute la pile USB pendant
   que vous débranchez et rebranchez ; les erreurs de lien sont la preuve la
   plus directe d'un câble ou d'un connecteur défaillant.
-- **Exporter** (E) : enregistre `rapport-treasure-cables-AAAAMMJJ-HHMMSS.json`
-  (sans numéros de série) à côté de l'exécutable, à partager ou à ouvrir sur le site.
+- **E — Exporter** : enregistre `rapport-treasure-cables-AAAAMMJJ-HHMMSS.json`
+  (sans numéros de série) à côté de l'exécutable.
+- **← →** onglets, **↑ ↓ / Page** défilement, **Q** quitter.
 
 Pour les scripts, les options restent disponibles (`--json`, `--input`, `--details`, `--deep`, `--help`).
 
