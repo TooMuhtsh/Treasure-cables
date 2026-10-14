@@ -286,6 +286,11 @@ impl App {
                     None => return respond(request, 400, "text/plain", b"Bad request".to_vec()),
                 }
             }
+            (Method::Post, "/api/open/network-connections") => {
+                if let Err(e) = crate::platform::open_network_connections() {
+                    self.error(format!("Impossible d'ouvrir les connexions réseau : {e}"));
+                }
+            }
             (Method::Post, "/api/elevate") => match treasure_collect::relaunch_elevated("--deep") {
                 Ok(()) => {
                     self.message = Some(Message {

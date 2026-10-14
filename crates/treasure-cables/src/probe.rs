@@ -40,6 +40,8 @@ pub struct ProbeProgress {
     pub probe: Option<String>,
     /// Ce que voit la recherche (carte réseau du partage, réponse de l'application).
     pub detail: Option<String>,
+    /// Action proposée à l'utilisateur ("network_connections").
+    pub action: Option<&'static str>,
 }
 
 pub struct ProbeTest {
@@ -55,6 +57,7 @@ impl ProbeTest {
             text: "Recherche du téléphone…".to_owned(),
             probe: None,
             detail: None,
+            action: None,
         }));
         let cancel = Arc::new(AtomicBool::new(false));
         let session = Session {
@@ -82,6 +85,7 @@ impl ProbeTest {
                 text: String::new(),
                 probe: None,
                 detail: None,
+                action: None,
             })
     }
 
@@ -252,15 +256,15 @@ impl Session {
                 }
                 match TcpStream::connect_timeout(&candidate.address, Duration::from_millis(800)) {
                     Ok(stream) => {
-                        self.set_detail(None);
+                        self.set_detail(None, None);
                         return Ok((stream, candidate.address));
                     }
                     Err(e) if candidate.usb => seen.push((candidate, e.kind())),
                     Err(_) => {}
                 }
             }
-            let detail = search_detail(&seen, &adapters);
-            self.set_detail(Some(detail.clone()));
+            let (detail, action) = search_detail(&seen, &adapters);
+            self.set_detail(Some(detail.clone()), action);
             if started.elapsed() > SEARCH_TIMEOUT {
                 return Err(format!(
                     "Le téléphone n'a pas été trouvé. {detail} Vérifiez que l'application Treasure Probe est ouverte et que le partage de connexion USB est activé. Si le téléphone ne propose pas ce partage, ou indique « pas de transfert de données », le câble ne transporte probablement pas les données."
@@ -270,9 +274,10 @@ impl Session {
         }
     }
 
-    fn set_detail(&self, detail: Option<String>) {
+    fn set_detail(&self, detail: Option<String>, action: Option<&'static str>) {
         if let Ok(mut p) = self.progress.lock() {
             p.detail = detail;
+            p.action = action;
         }
     }
 
@@ -358,9 +363,17 @@ fn candidates() -> (Vec<Candidate>, Vec<String>) {
 
 /// Explique l'état de la recherche, d'après les cartes du partage USB vues,
 /// suivi de la liste des cartes actives.
-fn search_detail(seen: &[(&Candidate, std::io::ErrorKind)], adapters: &[String]) -> String {
+fn search_detail(
+    seen: &[(&Candidate, std::io::ErrorKind)],
+    adapters: &[String],
+) -> (String, Option<&'static str>) {
+    let mut action = None;
     let head = match seen.first() {
-        None => no_tether_adapter(&treasure_collect::network::usb_network_functions()),
+        None => {
+            let (text, a) = no_tether_adapter(&treasure_collect::network::usb_network_functions());
+            action = a;
+            text
+        }
         Some((candidate, error)) => {
             let label = &candidate.label;
             let ip = candidate.address.ip();
@@ -379,39 +392,53 @@ fn search_detail(seen: &[(&Candidate, std::io::ErrorKind)], adapters: &[String])
             }
         }
     };
-    if adapters.is_empty() {
+    let text = if adapters.is_empty() {
         head
     } else {
         format!("{head} Cartes réseau : {}.", adapters.join(" ; "))
-    }
+    };
+    (text, action)
 }
 
 /// Aucune carte réseau de partage n'est active : la fonction de partage du
 /// téléphone est-elle vue en USB, et a-t-elle un pilote ?
-fn no_tether_adapter(functions: &[treasure_collect::network::UsbNetFunction]) -> String {
+fn no_tether_adapter(
+    functions: &[treasure_collect::network::UsbNetFunction],
+) -> (String, Option<&'static str>) {
     let Some(function) = functions
         .iter()
         .find(|f| f.problem.is_some() || f.driver.is_none())
         .or(functions.first())
     else {
-        return "L'ordinateur ne voit ni carte réseau de partage, ni fonction de partage du côté USB : le partage de connexion USB est-il activé sur le téléphone, et ce câble transporte-t-il les données ?".to_owned();
+        return ("L'ordinateur ne voit ni carte réseau de partage, ni fonction de partage du côté USB : le partage de connexion USB est-il activé sur le téléphone, et ce câble transporte-t-il les données ?".to_owned(), None);
     };
     let name = &function.description;
     let kind = function.kind;
     match (function.problem, &function.driver) {
-        (Some(28), _) | (None, None) => format!(
-            "Le téléphone propose son partage de connexion (« {name} », {kind}), mais Windows n'a pas de pilote pour lui. Dans le Gestionnaire de périphériques, sur « {name} » : Mettre à jour le pilote, Parcourir mon poste de travail, Choisir parmi une liste, Cartes réseau, Microsoft, puis « {} ». Le pilote USB du fabricant du téléphone convient aussi.",
-            if kind == "NCM" {
-                "UsbNcm Host Device"
-            } else {
-                "Remote NDIS Compatible Device"
-            }
+        (Some(28), _) | (None, None) => (
+            format!(
+                "Le téléphone propose son partage de connexion (« {name} », {kind}), mais Windows n'a pas de pilote pour lui. Dans le Gestionnaire de périphériques, sur « {name} » : Mettre à jour le pilote, Parcourir mon poste de travail, Choisir parmi une liste, Cartes réseau, Microsoft, puis « {} ». Le pilote USB du fabricant du téléphone convient aussi.",
+                if kind == "NCM" {
+                    "UsbNcm Host Device"
+                } else {
+                    "Remote NDIS Compatible Device"
+                }
+            ),
+            None,
         ),
-        (Some(problem), _) => format!(
-            "Le téléphone propose son partage de connexion (« {name} », {kind}), mais Windows le signale en erreur (code {problem}) dans le Gestionnaire de périphériques : désactivé ou mal installé."
+        (Some(problem), _) => (
+            format!(
+                "Le téléphone propose son partage de connexion (« {name} », {kind}), mais Windows le signale en erreur (code {problem}) dans le Gestionnaire de périphériques : désactivé ou mal installé."
+            ),
+            None,
         ),
-        (None, Some(driver)) => format!(
-            "Le téléphone propose son partage de connexion (« {name} », pilote {driver}), mais aucune carte réseau de partage n'en résulte (voir les cartes ci-dessous) : dans les connexions réseau de Windows (ncpa.cpl), la carte « Remote NDIS » est-elle désactivée ?"
+        // Une carte désactivée dans les connexions réseau n'apparaît plus du
+        // tout parmi les cartes : c'est le cas le plus probable.
+        (None, Some(_)) => (
+            format!(
+                "Le téléphone propose son partage de connexion (« {name} », {kind}) et Windows a son pilote, mais la carte réseau correspondante est invisible : elle est très probablement désactivée. Ouvrez les connexions réseau et activez la carte « Remote NDIS… » (clic droit, Activer). Si elle refuse ou se désactive d'elle-même, une règle de l'entreprise bloque sans doute le partage de connexion sur ce PC."
+            ),
+            Some("network_connections"),
         ),
     }
 }

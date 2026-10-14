@@ -21,6 +21,8 @@
   let phoneResultsBefore = 0;
   /** Échec du dernier test avec le téléphone, gardé affiché dans l'assistant. */
   let phoneError = $state<string | null>(null);
+  /** Action proposée avec cette erreur (ouvrir les connexions réseau). */
+  let phoneAction = $state<string | null>(null);
   let elevationAsked = $state(false);
   let handedOff = $state(false);
   let snack = $state<{ text: string; tone: string } | null>(null);
@@ -77,6 +79,7 @@
     if (cableStep === 'watch' && !next.cable) cableStep = 'verdict';
     // Test avec le téléphone terminé : verdict, ou retour au départ (l'erreur
     // est annoncée par le message du serveur).
+    if (phoneStep === 'running' && next.probe) phoneAction = next.probe.action;
     if (phoneStep === 'running' && !next.probe) {
       const done = next.cable_results.length > phoneResultsBefore;
       phoneStep = done ? 'verdict' : 'intro';
@@ -163,6 +166,7 @@
   async function startPhone() {
     phoneResultsBefore = st?.cable_results.length ?? 0;
     phoneError = null;
+    phoneAction = null;
     busy = true;
     try {
       const next = await api.probeStart();
@@ -301,6 +305,8 @@
       step={phoneStep}
       {st}
       error={phoneError}
+      action={phoneStep === 'running' ? (st.probe?.action ?? null) : phoneError ? phoneAction : null}
+      onaction={() => run(api.openNetworkConnections)}
       onstart={startPhone}
       oncancel={async () => {
         phoneStep = 'intro';

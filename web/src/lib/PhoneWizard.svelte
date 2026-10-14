@@ -6,6 +6,8 @@
     step,
     st,
     error,
+    action,
+    onaction,
     onstart,
     oncancel,
     onclose,
@@ -13,6 +15,8 @@
     step: PhoneStep;
     st: State;
     error: string | null;
+    action: string | null;
+    onaction: () => void;
     onstart: () => void;
     oncancel: () => void;
     onclose: () => void;
@@ -35,6 +39,9 @@
           <Icon name="error" size={28} />
           <p>{error}</p>
         </div>
+        {#if action === 'network_connections'}
+          <md-outlined-button onclick={onaction}>Ouvrir les connexions réseau</md-outlined-button>
+        {/if}
       {/if}
       <p>
         Le téléphone sert de testeur : l'ordinateur et l'application <strong>Treasure Probe</strong> font passer des données
@@ -58,6 +65,9 @@
           {#if st.probe?.phase === 'searching'}
             <p class="muted">Application ouverte et partage de connexion USB activé ? Le téléphone est cherché pendant 2 minutes.</p>
             {#if st.probe.detail}<p class="muted"><Icon name="info" size={16} /> {st.probe.detail}</p>{/if}
+            {#if action === 'network_connections'}
+              <md-outlined-button onclick={onaction}>Ouvrir les connexions réseau</md-outlined-button>
+            {/if}
           {/if}
         </div>
       </div>

@@ -48,3 +48,15 @@ pub fn message(text: &str) {
     #[cfg(not(windows))]
     eprintln!("{text}");
 }
+
+/// Ouvre les connexions réseau de Windows (ncpa.cpl).
+pub fn open_network_connections() -> std::io::Result<()> {
+    if cfg!(windows) {
+        std::process::Command::new("control.exe")
+            .arg("ncpa.cpl")
+            .spawn()
+            .map(|_| ())
+    } else {
+        Err(std::io::Error::other("disponible sous Windows seulement"))
+    }
+}

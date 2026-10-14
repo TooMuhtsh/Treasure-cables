@@ -130,6 +130,8 @@ export interface ProbeProgress {
   probe: string | null;
   /** Ce que voit la recherche du téléphone. */
   detail: string | null;
+  /** Action proposée : ouvrir les connexions réseau de Windows. */
+  action: 'network_connections' | null;
 }
 
 export type Theme = 'auto' | 'light' | 'dark';
@@ -187,6 +189,7 @@ export const api = {
   elevate: () => call('POST', 'elevate'),
   probeStart: () => call('POST', 'probe/start'),
   probeCancel: () => call('POST', 'probe/cancel'),
+  openNetworkConnections: () => call('POST', 'open/network-connections'),
   setTheme: (theme: Theme) => call('POST', `theme/${theme}`),
   /** La fenêtre se ferme : le serveur s'arrête s'il n'a plus de nouvelles. */
   bye: () => {
