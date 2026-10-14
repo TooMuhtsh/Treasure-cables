@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import logo from '../../docs/logo/cablescope.svg';
   import CableWizard from './lib/CableWizard.svelte';
   import DeepDialog from './lib/DeepDialog.svelte';
   import DeviceDialog from './lib/DeviceDialog.svelte';
@@ -215,7 +216,7 @@
 {:else}
   <header class="appbar">
     <div class="brand">
-      <span class="logo"><Icon name="usb" size={26} /></span>
+      <img class="logo" src={logo} alt="" width="44" height="44" />
       <div>
         <h1>CableScope</h1>
         <p>{p?.os ?? 'Analyse en cours…'}</p>
@@ -371,13 +372,9 @@
     min-width: 0;
   }
   .logo {
-    display: grid;
-    place-items: center;
     width: 44px;
     height: 44px;
-    border-radius: 12px;
-    background: var(--md-sys-color-primary-container);
-    color: var(--md-sys-color-on-primary-container);
+    flex: none;
   }
   h1 {
     margin: 0;

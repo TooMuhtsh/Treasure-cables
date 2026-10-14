@@ -2,6 +2,8 @@
 //!   sans ambiguïté quelle version a produit un rapport.
 //! - Interface web (`web/dist`, produite par `npm run build`) embarquée dans
 //!   l'exécutable ; à défaut, une page explique comment la compiler.
+//! - Sous Windows : icône CableScope et informations de version de
+//!   l'exécutable (Explorateur, barre des tâches, propriétés du fichier).
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -22,6 +24,60 @@ fn main() {
     println!("cargo:rerun-if-changed=../../.git/refs");
 
     embed_web();
+    embed_windows_resources();
+}
+
+fn embed_windows_resources() {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        return;
+    }
+    let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    let icon = manifest.join("assets/cablescope.ico");
+    println!("cargo:rerun-if-changed={}", icon.display());
+
+    let version = std::env::var("CARGO_PKG_VERSION").unwrap();
+    let numbers: Vec<u16> = version
+        .split(['.', '-', '+'])
+        .take(3)
+        .map(|n| n.parse().unwrap_or(0))
+        .collect();
+    let [major, minor, patch] = [0, 1, 2].map(|i| numbers.get(i).copied().unwrap_or(0));
+    let icon_path = icon.display().to_string().replace('\\', "\\\\");
+    let rc = format!(
+        r#"1 ICON "{icon_path}"
+
+1 VERSIONINFO
+FILEVERSION {major},{minor},{patch},0
+PRODUCTVERSION {major},{minor},{patch},0
+FILEOS 0x40004
+FILETYPE 0x1
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040C04B0"
+    BEGIN
+      VALUE "CompanyName", "CableScope"
+      VALUE "FileDescription", "CableScope"
+      VALUE "FileVersion", "{version}"
+      VALUE "InternalName", "cablescope"
+      VALUE "LegalCopyright", "MIT OR Apache-2.0"
+      VALUE "OriginalFilename", "cablescope.exe"
+      VALUE "ProductName", "CableScope"
+      VALUE "ProductVersion", "{version}"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x40C, 1200
+  END
+END
+"#
+    );
+    let out = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("cablescope.rc");
+    std::fs::write(&out, rc).unwrap();
+    embed_resource::compile(&out, embed_resource::NONE)
+        .manifest_optional()
+        .unwrap();
 }
 
 fn embed_web() {

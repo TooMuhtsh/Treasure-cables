@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Logo CableScope en une couleur, pour les icônes à thème (Android 13+).
+     Reprend docs/logo/cablescope.svg, réduit pour tenir dans la zone sûre de l'icône adaptative. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:translateX="22.32" android:translateY="22.32" android:scaleX="0.66" android:scaleY="0.66">
+        <path android:pathData="M22,20C22,44 28,52 36,52C44,52 50,44 50,20" android:strokeColor="#FFFFFF" android:strokeWidth="6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+        <path android:pathData="M36,52V62C36,75 45,81 56,81C65,81 70,78 70,73" android:strokeColor="#FFFFFF" android:strokeWidth="6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+        <path android:pathData="M17,17A5,5 0 1 0 27,17A5,5 0 1 0 17,17Z" android:fillColor="#FFFFFF" />
+        <path android:pathData="M45,17A5,5 0 1 0 55,17A5,5 0 1 0 45,17Z" android:fillColor="#FFFFFF" />
+        <group android:pivotX="70" android:pivotY="74" android:scaleX="0.75" android:scaleY="0.75">
+            <path android:pathData="M62.5,58H77.5L76,72Q76,74 74,74H66Q64,74 64,72Z" android:fillColor="#FFFFFF" />
+            <path android:pathData="M59,55L54,40.5Q53.6,39 55,38.6L57.2,38L59,44Z" android:fillColor="#FFFFFF" />
+            <path android:pathData="M60.8,29H79.2A1.8,1.8 0 0 1 81,30.8V56.2A1.8,1.8 0 0 1 79.2,58H60.8A1.8,1.8 0 0 1 59,56.2V30.8A1.8,1.8 0 0 1 60.8,29Z" android:strokeColor="#FFFFFF" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />
+            <path android:pathData="M60.1,31H61.5V38H60.1Z" android:fillColor="#FFFFFF" />
+            <path android:pathData="M62.7,31H64.10000000000001V38H62.7Z" android:fillColor="#FFFFFF" />
+            <path android:pathData="M65.3,31H66.7V38H65.3Z" android:fillColor="#FFFFFF" />
+            <path android:pathData="M67.9,31H69.30000000000001V38H67.9Z" android:fillColor="#FFFFFF" />
+            <path android:pathData="M70.5,31H71.9V38H70.5Z" android:fillColor="#FFFFFF" />
+            <path android:pathData="M73.1,31H74.5V38H73.1Z" android:fillColor="#FFFFFF" />
+            <path android:pathData="M75.7,31H77.10000000000001V38H75.7Z" android:fillColor="#FFFFFF" />
+            <path android:pathData="M78.3,31H79.7V38H78.3Z" android:fillColor="#FFFFFF" />
+        </group>
+    </group>
+</vector>

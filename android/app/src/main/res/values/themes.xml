@@ -4,5 +4,5 @@
         <item name="android:windowBackground">@color/background</item>
     </style>
     <color name="background">#F9F9FF</color>
-    <color name="usb_blue">#005EB8</color>
+    <color name="cablescope_blue">#005EB8</color>
 </resources>

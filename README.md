@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo/cablescope.svg" width="112" alt="Logo CableScope : un stéthoscope terminé par une fiche RJ45"></p>
+
 # CableScope
 
 **Ce que votre câble USB limite vraiment.**

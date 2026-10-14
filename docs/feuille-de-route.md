@@ -25,8 +25,8 @@ Ce qui est prévu pour les prochaines versions, par ordre de priorité.
 - Compte développeur Google Play (25 $, vérification d'identité).
 - Test fermé obligatoire pour un compte personnel : 12 testeurs inscrits
   pendant 14 jours d'affilée avant la publication.
-- À préparer : AAB signé, fiche (description, captures, icône 512 px,
-  bannière), questionnaire de classification, formulaire « Sécurité des
+- À préparer : AAB signé, fiche (description, captures, bannière ; l'icône
+  512 px est prête : `docs/logo/cablescope-play-store-512.png`), questionnaire de classification, formulaire « Sécurité des
   données » (aucune donnée collectée), page de politique de confidentialité.
 - Version Android visée : à relever chaque année (API 36 exigée depuis le
   31 août 2026).

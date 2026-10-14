@@ -5,7 +5,11 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,6 +40,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -56,6 +63,25 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/** Le logo de l'application, tel qu'il apparaît sur l'écran d'accueil. */
+@Composable
+fun Logo(modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .size(36.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0xFF005EB8)),
+    ) {
+        // Le dessin de l'icône adaptative laisse une marge pour les masques
+        // ronds du lanceur : on l'agrandit pour remplir la vignette.
+        Image(
+            painter = painterResource(R.drawable.ic_launcher_foreground),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize().scale(1.4f),
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProbeScreen(model: ProbeViewModel = viewModel()) {
@@ -66,6 +92,7 @@ fun ProbeScreen(model: ProbeViewModel = viewModel()) {
         topBar = {
             TopAppBar(
                 title = { Text("CableScope Probe") },
+                navigationIcon = { Logo(Modifier.padding(start = 12.dp, end = 4.dp)) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainer,
                 ),
