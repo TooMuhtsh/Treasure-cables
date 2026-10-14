@@ -1,4 +1,4 @@
-# Treasure Cables
+# CableScope
 
 **Ce que votre câble USB limite vraiment.**
 
@@ -7,7 +7,7 @@ Un même connecteur USB-C peut cacher un câble à 480 Mb/s ou à 80 Gb/s, limit
 outils existants (USB Device Tree Viewer, lsusb…) affichent des descripteurs
 bruts réservés aux experts.
 
-Treasure Cables croise ce que le système sait sur vos ports, câbles et
+CableScope croise ce que le système sait sur vos ports, câbles et
 appareils, et le traduit en diagnostic clair :
 
 ```
@@ -31,16 +31,16 @@ appareils, et le traduit en diagnostic clair :
 
 ```
 crates/
-├── treasure-model    modèle de données + format de rapport   ┐
-├── treasure-audit    règles de diagnostic, test de câble     │ sans dépendance au système,
-├── treasure-present  présentation pour les interfaces        ┘ compilent en WebAssembly
-├── treasure-collect  collecte : Linux (sysfs, typec), Windows (IOCTL des hubs)
-└── treasure-cables   version portable : fenêtre (serveur local), console, ligne de commande
+├── cablescope-model    modèle de données + format de rapport   ┐
+├── cablescope-audit    règles de diagnostic, test de câble     │ sans dépendance au système,
+├── cablescope-present  présentation pour les interfaces        ┘ compilent en WebAssembly
+├── cablescope-collect  collecte : Linux (sysfs, typec), Windows (IOCTL des hubs)
+└── cablescope   version portable : fenêtre (serveur local), console, ligne de commande
 web/                  interface Svelte 5 + Material Web (fenêtre de l'application et futur site)
-android/              Treasure Probe : application Android qui sert de sonde (Kotlin, Compose)
+android/              CableScope Probe : application Android qui sert de sonde (Kotlin, Compose)
 ```
 
-Le futur site web réutilisera la même interface (`web/`) et `treasure-present` compilé en
+Le futur site web réutilisera la même interface (`web/`) et `cablescope-present` compilé en
 WebAssembly : il pourra lire un rapport produit par la version portable,
 l'expliquer et le partager. Un navigateur ne peut pas inspecter lui-même l'arbre
 USB ni les vitesses de lien (WebUSB ne le permet pas), d'où ce découpage.
@@ -55,14 +55,14 @@ USB ni les vitesses de lien (WebUSB ne le permet pas), d'où ce découpage.
 
 ## Utilisation
 
-**Windows** : téléchargez `treasure-cables.exe` (artefact `treasure-cables-windows-x64`
+**Windows** : téléchargez `cablescope.exe` (artefact `cablescope-windows-x64`
 de la CI GitHub Actions) et double-cliquez dessus. L'interface s'ouvre dans une
 fenêtre (Edge en mode application, Material Design 3, thème clair ou sombre) :
 
 - **Tester un câble** : débranchez l'appareil, branchez-le avec le câble à
   tester ; verdict immédiat (charge seule, limité à l'USB 2.0, défaillant,
   correct) et comparaison des câbles testés.
-- **Tester avec mon téléphone** : avec l'application Android **Treasure Probe**, le
+- **Tester avec mon téléphone** : avec l'application Android **CableScope Probe**, le
   téléphone devient testeur. Le logiciel et l'application dialoguent à travers le
   câble (partage de connexion USB) : vitesse négociée, débit réel dans les deux
   sens, coupures, erreurs de lien et charge reçue par le téléphone. L'application
@@ -76,7 +76,7 @@ fenêtre (Edge en mode application, Material Design 3, thème clair ou sombre) :
 - Mise à jour automatique : brancher ou débrancher un appareil USB ou un
   écran relance l'analyse et l'annonce (« Branché : … »), sans bouton.
 - Thème clair, sombre ou automatique (suit Windows), mémorisé d'un lancement
-  à l'autre (`%APPDATA%\Treasure Cables\preferences.json`).
+  à l'autre (`%APPDATA%\CableScope\preferences.json`).
 
 L'interface est servie par l'exécutable lui-même, uniquement sur 127.0.0.1 et
 protégée par un jeton aléatoire ; l'outil s'arrête quand la fenêtre est fermée.
@@ -87,16 +87,16 @@ dans sa propre console.
 Pour les scripts, les options restent disponibles (`--json`, `--input`, `--details`,
 `--deep`, `--tui`, `--gui`, `--no-window`, `--help`). Lancées depuis un
 terminal, elles y écrivent leur résultat ; sous PowerShell, la redirection
-fonctionne comme d'habitude : `.\treasure-cables.exe --json > rapport.json`.
+fonctionne comme d'habitude : `.\cablescope.exe --json > rapport.json`.
 
 **Depuis les sources** (l'interface web se compile d'abord, elle est ensuite
 embarquée dans l'exécutable) :
 
 ```sh
 (cd web && npm ci && npm run build)
-cargo run --release -p treasure-cables                 # diagnostic de la machine
-cargo run --release -p treasure-cables -- --json > rapport.json
-cargo run --release -p treasure-cables -- --input rapport.json
+cargo run --release -p cablescope                 # diagnostic de la machine
+cargo run --release -p cablescope -- --json > rapport.json
+cargo run --release -p cablescope -- --input rapport.json
 ```
 
 ## Documentation
@@ -107,9 +107,9 @@ cargo run --release -p treasure-cables -- --input rapport.json
 - [Protocole de sonde](docs/protocole-sonde.md) : comment le logiciel et une sonde (l'application
   Android, ou tout autre appareil) testent un câble ensemble
 
-## Treasure Probe (Android)
+## CableScope Probe (Android)
 
-L'APK est produit par la CI (artefact `treasure-probe-apk`) ; Android 8 ou plus récent.
+L'APK est produit par la CI (artefact `cablescope-probe-apk`) ; Android 8 ou plus récent.
 Pour le compiler :
 
 ```sh
@@ -117,8 +117,8 @@ cd android
 ./gradlew :app:testDebugUnitTest :app:assembleDebug   # SDK Android requis (ANDROID_HOME)
 ```
 
-Sans téléphone, `TREASURE_PROBE_SERVE=60 ./gradlew :app:testDebugUnitTest --rerun` sert une sonde
-de développement sur 127.0.0.1 ; lancez alors le logiciel avec `TREASURE_PROBE=127.0.0.1`.
+Sans téléphone, `CABLESCOPE_PROBE_SERVE=60 ./gradlew :app:testDebugUnitTest --rerun` sert une sonde
+de développement sur 127.0.0.1 ; lancez alors le logiciel avec `CABLESCOPE_PROBE=127.0.0.1`.
 
 ## FAQ
 

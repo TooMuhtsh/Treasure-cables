@@ -1,0 +1,16 @@
+[package]
+name = "cablescope-present"
+description = "Présentation d'un rapport CableScope pour les interfaces (application et site web, compatible WebAssembly)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+cablescope-model.workspace = true
+cablescope-audit.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

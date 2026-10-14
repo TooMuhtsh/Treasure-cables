@@ -46,11 +46,11 @@
         {/if}
       {/if}
       <p>
-        Le téléphone sert de testeur : l'ordinateur et l'application <strong>Treasure Probe</strong> font passer des données
+        Le téléphone sert de testeur : l'ordinateur et l'application <strong>CableScope Probe</strong> font passer des données
         par le câble dans les deux sens, et le téléphone mesure la charge qu'il reçoit.
       </p>
       <ol class="steps">
-        <li>Ouvrez <strong>Treasure Probe</strong> sur le téléphone.</li>
+        <li>Ouvrez <strong>CableScope Probe</strong> sur le téléphone.</li>
         <li>Branchez le téléphone à l'ordinateur <strong>avec le câble à tester</strong>.</li>
         <li>Activez le <strong>partage de connexion USB</strong> : l'application vous y emmène.</li>
       </ol>
@@ -157,7 +157,7 @@
     display: flex;
     gap: 6px;
     align-items: center;
-    color: var(--treasure-ok);
+    color: var(--cablescope-ok);
     font-weight: 500;
   }
   .muted {
@@ -171,12 +171,12 @@
     border-radius: 16px;
   }
   .verdict.ok {
-    background: var(--treasure-ok-container);
-    color: var(--treasure-on-ok-container);
+    background: var(--cablescope-ok-container);
+    color: var(--cablescope-on-ok-container);
   }
   .verdict.warning {
-    background: var(--treasure-warn-container);
-    color: var(--treasure-on-warn-container);
+    background: var(--cablescope-warn-container);
+    color: var(--cablescope-on-warn-container);
   }
   .verdict.problem {
     background: var(--md-sys-color-error-container);
@@ -209,10 +209,10 @@
     color: var(--md-sys-color-on-surface);
   }
   .results li.ok {
-    color: var(--treasure-ok);
+    color: var(--cablescope-ok);
   }
   .results li.warning {
-    color: var(--treasure-warn);
+    color: var(--cablescope-warn);
   }
   .results li.problem {
     color: var(--md-sys-color-error);

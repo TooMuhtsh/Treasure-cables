@@ -82,8 +82,8 @@
     border: 1px solid var(--md-sys-color-outline-variant);
   }
   .finding.ok {
-    background: var(--treasure-ok-container);
-    color: var(--treasure-on-ok-container);
+    background: var(--cablescope-ok-container);
+    color: var(--cablescope-on-ok-container);
     border-color: transparent;
     margin-bottom: 12px;
   }
@@ -91,8 +91,8 @@
     color: var(--md-sys-color-primary);
   }
   .finding.warning {
-    background: var(--treasure-warn-container);
-    color: var(--treasure-on-warn-container);
+    background: var(--cablescope-warn-container);
+    color: var(--cablescope-on-warn-container);
     border-color: transparent;
   }
   .finding.problem {

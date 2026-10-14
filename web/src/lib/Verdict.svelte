@@ -76,10 +76,10 @@
     gap: 10px;
   }
   header.ok {
-    color: var(--treasure-ok);
+    color: var(--cablescope-ok);
   }
   header.warning {
-    color: var(--treasure-warn);
+    color: var(--cablescope-warn);
   }
   header.problem {
     color: var(--md-sys-color-error);

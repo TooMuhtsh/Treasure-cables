@@ -9,7 +9,7 @@
   <div slot="content">
     <p>
       Le diagnostic approfondi écoute la pile USB de Windows pendant que vous branchez et débranchez : il faut les
-      droits administrateur. Treasure Cables va se relancer dans une nouvelle fenêtre, après l'invite de Windows.
+      droits administrateur. CableScope va se relancer dans une nouvelle fenêtre, après l'invite de Windows.
     </p>
   </div>
   <div slot="actions">

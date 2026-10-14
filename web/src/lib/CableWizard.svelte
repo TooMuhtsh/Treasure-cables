@@ -152,7 +152,7 @@
     display: flex;
     gap: 6px;
     align-items: center;
-    color: var(--treasure-ok);
+    color: var(--cablescope-ok);
     font-weight: 500;
   }
   .muted {
@@ -165,12 +165,12 @@
     border-radius: 16px;
   }
   .verdict.ok {
-    background: var(--treasure-ok-container);
-    color: var(--treasure-on-ok-container);
+    background: var(--cablescope-ok-container);
+    color: var(--cablescope-on-ok-container);
   }
   .verdict.warning {
-    background: var(--treasure-warn-container);
-    color: var(--treasure-on-warn-container);
+    background: var(--cablescope-warn-container);
+    color: var(--cablescope-on-warn-container);
   }
   .verdict.problem {
     background: var(--md-sys-color-error-container);
@@ -203,10 +203,10 @@
     color: var(--md-sys-color-on-surface);
   }
   .results li.ok {
-    color: var(--treasure-ok);
+    color: var(--cablescope-ok);
   }
   .results li.warning {
-    color: var(--treasure-warn);
+    color: var(--cablescope-warn);
   }
   .results li.problem {
     color: var(--md-sys-color-error);

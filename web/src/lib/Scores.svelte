@@ -48,12 +48,12 @@
     background: currentColor;
   }
   .pill.good {
-    background: var(--treasure-ok-container);
-    color: var(--treasure-on-ok-container);
+    background: var(--cablescope-ok-container);
+    color: var(--cablescope-on-ok-container);
   }
   .pill.fair {
-    background: var(--treasure-warn-container);
-    color: var(--treasure-on-warn-container);
+    background: var(--cablescope-warn-container);
+    color: var(--cablescope-on-warn-container);
   }
   .pill.bad {
     background: var(--md-sys-color-error-container);

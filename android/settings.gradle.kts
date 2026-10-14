@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "treasure-probe"
+rootProject.name = "cablescope-probe"
 include(":app")

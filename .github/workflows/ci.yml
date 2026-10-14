@@ -23,7 +23,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
       - name: Rapport de la machine de CI
-        run: cargo run -p treasure-cables -- --json
+        run: cargo run -p cablescope -- --json
 
   web:
     runs-on: ubuntu-latest
@@ -56,11 +56,11 @@ jobs:
           npm ci
           npm run build
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo build --release -p treasure-cables
+      - run: cargo build --release -p cablescope
       - uses: actions/upload-artifact@v4
         with:
-          name: treasure-cables-windows-x64
-          path: target/release/treasure-cables.exe
+          name: cablescope-windows-x64
+          path: target/release/cablescope.exe
 
   wasm:
     runs-on: ubuntu-latest
@@ -70,7 +70,7 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - name: Le modèle et l'audit doivent rester compatibles WebAssembly
-        run: cargo check -p treasure-model -p treasure-audit -p treasure-present --target wasm32-unknown-unknown
+        run: cargo check -p cablescope-model -p cablescope-audit -p cablescope-present --target wasm32-unknown-unknown
 
   android:
     runs-on: ubuntu-latest
@@ -84,9 +84,9 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
-      - name: Tests de la sonde et APK de Treasure Probe
+      - name: Tests de la sonde et APK de CableScope Probe
         run: ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: treasure-probe-apk
+          name: cablescope-probe-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk

@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "io.github.toomuhtsh.treasureprobe"
+    namespace = "io.github.toomuhtsh.cablescope"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "io.github.toomuhtsh.treasureprobe"
+        applicationId = "io.github.toomuhtsh.cablescope"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

@@ -118,12 +118,12 @@
     background: var(--md-sys-color-surface-container-highest);
   }
   .pill.at_max {
-    background: var(--treasure-ok-container);
-    color: var(--treasure-on-ok-container);
+    background: var(--cablescope-ok-container);
+    color: var(--cablescope-on-ok-container);
   }
   .pill.below {
-    background: var(--treasure-warn-container);
-    color: var(--treasure-on-warn-container);
+    background: var(--cablescope-warn-container);
+    color: var(--cablescope-on-warn-container);
   }
   .pill.problem {
     background: var(--md-sys-color-error-container);
@@ -141,10 +141,10 @@
     background: var(--md-sys-color-primary);
   }
   .fill.at_max {
-    background: var(--treasure-ok);
+    background: var(--cablescope-ok);
   }
   .fill.below {
-    background: var(--treasure-warn);
+    background: var(--cablescope-warn);
   }
   .max {
     position: absolute;

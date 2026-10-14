@@ -209,7 +209,7 @@
 {#if handedOff}
   <main class="handoff">
     <Icon name="admin" size={48} />
-    <h1>Treasure Cables continue dans la fenêtre administrateur</h1>
+    <h1>CableScope continue dans la fenêtre administrateur</h1>
     <p>Cette fenêtre se ferme…</p>
   </main>
 {:else}
@@ -217,7 +217,7 @@
     <div class="brand">
       <span class="logo"><Icon name="usb" size={26} /></span>
       <div>
-        <h1>Treasure Cables</h1>
+        <h1>CableScope</h1>
         <p>{p?.os ?? 'Analyse en cours…'}</p>
       </div>
     </div>
@@ -264,7 +264,7 @@
           <Icon name="phone" size={32} />
           <div>
             <h2>Tester avec mon téléphone</h2>
-            <p>Le téléphone devient testeur : débit réel dans les deux sens et charge reçue, avec l'application Treasure Probe.</p>
+            <p>Le téléphone devient testeur : débit réel dans les deux sens et charge reçue, avec l'application CableScope Probe.</p>
           </div>
           <md-filled-tonal-button onclick={() => (phoneStep = 'intro')}>Commencer</md-filled-tonal-button>
         </article>
@@ -303,7 +303,7 @@
     {/if}
   </main>
 
-  <footer>Treasure Cables {p?.tool_version ?? ''} · {st?.build ?? ''}</footer>
+  <footer>CableScope {p?.tool_version ?? ''} · {st?.build ?? ''}</footer>
 
   {#if st}
     <CableWizard
@@ -399,12 +399,12 @@
     cursor: pointer;
   }
   .summary.ok {
-    background: var(--treasure-ok-container);
-    color: var(--treasure-on-ok-container);
+    background: var(--cablescope-ok-container);
+    color: var(--cablescope-on-ok-container);
   }
   .summary.warning {
-    background: var(--treasure-warn-container);
-    color: var(--treasure-on-warn-container);
+    background: var(--cablescope-warn-container);
+    color: var(--cablescope-on-warn-container);
   }
   .summary.problem {
     background: var(--md-sys-color-error-container);

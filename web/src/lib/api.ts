@@ -1,5 +1,5 @@
 // Accès au serveur local de l'application, et types de la présentation
-// calculée côté Rust (crate treasure-present). Le futur site web fournira
+// calculée côté Rust (crate cablescope-present). Le futur site web fournira
 // les mêmes données à partir d'un rapport déposé.
 
 export type Level = 'ok' | 'info' | 'warning' | 'problem';
@@ -182,11 +182,11 @@ export interface State {
 const token: string = (() => {
   const fromUrl = new URLSearchParams(location.search).get('t');
   if (fromUrl) {
-    sessionStorage.setItem('treasure-token', fromUrl);
+    sessionStorage.setItem('cablescope-token', fromUrl);
     history.replaceState(null, '', location.pathname);
     return fromUrl;
   }
-  return sessionStorage.getItem('treasure-token') ?? '';
+  return sessionStorage.getItem('cablescope-token') ?? '';
 })();
 
 async function call(method: 'GET' | 'POST', path: string): Promise<State> {

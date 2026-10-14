@@ -98,12 +98,12 @@
     white-space: nowrap;
   }
   .speed.at_max {
-    background: var(--treasure-ok-container);
-    color: var(--treasure-on-ok-container);
+    background: var(--cablescope-ok-container);
+    color: var(--cablescope-on-ok-container);
   }
   .speed.below {
-    background: var(--treasure-warn-container);
-    color: var(--treasure-on-warn-container);
+    background: var(--cablescope-warn-container);
+    color: var(--cablescope-on-warn-container);
   }
   .speed.problem {
     background: var(--md-sys-color-error-container);
@@ -122,7 +122,7 @@
     background: var(--md-sys-color-primary);
   }
   .fill.below {
-    background: var(--treasure-warn);
+    background: var(--cablescope-warn);
   }
   .max {
     position: absolute;
@@ -134,7 +134,7 @@
   .hint {
     margin: 0 0 0 30px;
     font-size: 13px;
-    color: var(--treasure-on-warn-container);
+    color: var(--cablescope-on-warn-container);
   }
   .children {
     margin-left: 10px;

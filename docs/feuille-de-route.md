@@ -20,7 +20,7 @@ Ce qui est prévu pour les prochaines versions, par ordre de priorité.
   l'AAB, joints à la version.
 - Clé de signature de l'application conservée dans les secrets du dépôt.
 
-### Treasure Probe sur le Play Store
+### CableScope Probe sur le Play Store
 
 - Compte développeur Google Play (25 $, vérification d'identité).
 - Test fermé obligatoire pour un compte personnel : 12 testeurs inscrits
@@ -31,7 +31,7 @@ Ce qui est prévu pour les prochaines versions, par ordre de priorité.
 - Version Android visée : à relever chaque année (API 36 exigée depuis le
   31 août 2026).
 
-### Treasure Probe sur F-Droid
+### CableScope Probe sur F-Droid
 
 - Métadonnées (fastlane) et compilation depuis les sources ; aucune
   bibliothèque propriétaire.
@@ -39,7 +39,7 @@ Ce qui est prévu pour les prochaines versions, par ordre de priorité.
 ### Dans le logiciel
 
 - **QR code vers la fiche Play Store** dans l'assistant « Tester avec mon
-  téléphone » (`https://play.google.com/store/apps/details?id=io.github.toomuhtsh.treasureprobe`),
+  téléphone » (`https://play.google.com/store/apps/details?id=io.github.toomuhtsh.cablescope`),
   à activer dès la publication ; lien F-Droid et APK en second choix.
 - Généré hors ligne (bibliothèque embarquée), comme le reste de l'interface.
 

@@ -1,14 +1,14 @@
-# Protocole de sonde Treasure Cables (version 1)
+# Protocole de sonde CableScope (version 1)
 
 Une **sonde** est un appareil branché au bout du câble à tester, qui dialogue
 avec le logiciel **à travers ce câble** : le logiciel mesure ce que le câble
 laisse réellement passer (débit dans les deux sens, coupures), et la sonde
 rapporte ce qu'elle voit de son côté (charge reçue). La première sonde est
-l'application Android *Treasure Probe* ; n'importe quel appareil capable de
+l'application Android *CableScope Probe* ; n'importe quel appareil capable de
 parler ce protocole peut en être une (autre application, montage à
 microcontrôleur…).
 
-Ce document est la référence : le logiciel (`crates/treasure-cables/src/probe.rs`)
+Ce document est la référence : le logiciel (`crates/cablescope/src/probe.rs`)
 et l'application (`android/`) l'implémentent.
 
 ## Transport
@@ -38,13 +38,13 @@ erreur `unknown_type` sans couper la session.
 Logiciel → sonde :
 
 ```json
-{"type":"hello","protocol":1,"software":"Treasure Cables","version":"0.1.0","computer":"PORTABLE-ALEX"}
+{"type":"hello","protocol":1,"software":"CableScope","version":"0.1.0","computer":"PORTABLE-ALEX"}
 ```
 
 Sonde → logiciel :
 
 ```json
-{"type":"hello","protocol":1,"probe":"Treasure Probe","version":"0.1.0",
+{"type":"hello","protocol":1,"probe":"CableScope Probe","version":"0.1.0",
  "device":{"manufacturer":"samsung","model":"SM-S911B","android":"16"},
  "capabilities":["battery","throughput"]}
 ```
@@ -56,7 +56,7 @@ répond `{"type":"error","code":"protocol",…}` et ferme.
 
 ### 2. Accord de l'utilisateur
 
-La sonde demande l'accord sur son écran (« Treasure Cables sur
+La sonde demande l'accord sur son écran (« CableScope sur
 PORTABLE-ALEX veut tester le câble »), puis :
 
 ```json
@@ -156,10 +156,10 @@ un résultat : la liaison a lâché.
 
 ## Développement
 
-Le logiciel accepte la variable d'environnement `TREASURE_PROBE`
+Le logiciel accepte la variable d'environnement `CABLESCOPE_PROBE`
 (`adresse` ou `adresse:port`) pour joindre une sonde sans partage de connexion,
 par exemple la sonde de développement de l'application
-(`TREASURE_PROBE_SERVE=60 ./gradlew :app:testDebugUnitTest --rerun` dans `android/`).
+(`CABLESCOPE_PROBE_SERVE=60 ./gradlew :app:testDebugUnitTest --rerun` dans `android/`).
 
 ## Évolution
 

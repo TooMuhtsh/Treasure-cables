@@ -1,11 +1,11 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/treasure-model",
-    "crates/treasure-audit",
-    "crates/treasure-collect",
-    "crates/treasure-present",
-    "crates/treasure-cables",
+    "crates/cablescope-model",
+    "crates/cablescope-audit",
+    "crates/cablescope-collect",
+    "crates/cablescope-present",
+    "crates/cablescope",
 ]
 
 [workspace.package]
@@ -16,9 +16,9 @@ repository = "https://github.com/TooMuhtsh/Treasure-cables"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-treasure-model = { path = "crates/treasure-model" }
-treasure-audit = { path = "crates/treasure-audit" }
-treasure-collect = { path = "crates/treasure-collect" }
-treasure-present = { path = "crates/treasure-present" }
+cablescope-model = { path = "crates/cablescope-model" }
+cablescope-audit = { path = "crates/cablescope-audit" }
+cablescope-collect = { path = "crates/cablescope-collect" }
+cablescope-present = { path = "crates/cablescope-present" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

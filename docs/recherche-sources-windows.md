@@ -1,6 +1,6 @@
 # Ce que Windows montre, et ce qu'on peut récupérer qu'il ne montre pas
 
-Synthèse de recherche (octobre 2026) pour la collecte Windows de Treasure Cables.
+Synthèse de recherche (octobre 2026) pour la collecte Windows de CableScope.
 Sources principales : documentation Microsoft Learn (lue via ses dépôts GitHub
 MicrosoftDocs), en-têtes du SDK/WDK (win32metadata), code source de l'exemple
 USBView de Microsoft (MS-PL), code de nusb et cyme.
@@ -10,7 +10,7 @@ USBView de Microsoft (MS-PL), code de nusb et cyme.
 - **Non vérifié** : rien n'a pu être testé sur une vraie machine Windows. Tout ce
   qui est marqué *(à vérifier)* doit être confirmé sur du matériel réel.
 - **Fiabilité** : *Mesuré* = état réel du lien ; *Déclaré* = annoncé par
-  l'appareil, le port ou le câble ; *Déduit* = conclusion de Treasure Cables.
+  l'appareil, le port ou le câble ; *Déduit* = conclusion de CableScope.
 
 ## En bref
 
@@ -206,7 +206,7 @@ branché en USB 2 annonce souvent 2.10).
 - **UsbAtlas** : sans droits ; détecte les routeurs USB4 et le Billboard, et lit le journal UCMUCSICX.
 - **usbscope** : SMBIOS, WMI, Billboard.
 
-**Ce que Treasure Cables apporte** : le **diagnostic en langage clair**
+**Ce que CableScope apporte** : le **diagnostic en langage clair**
 (mesuré / déclaré / déduit), un rapport partageable et un même moteur pour
 l'application portable et le site web.
 
