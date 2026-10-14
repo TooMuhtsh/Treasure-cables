@@ -105,7 +105,8 @@ const _: () = {
     assert!(offset_of!(USB_DESCRIPTOR_REQUEST, Data) == 12);
 };
 
-pub fn collect() -> Result<Report, Error> {
+/// `light` : pas de lecture de descripteurs ni d'écrans (surveillance répétée).
+pub fn collect(light: bool) -> Result<Report, Error> {
     let mut report = empty_report(os_version());
     let devnodes = DevnodeIndex::load();
 
@@ -143,6 +144,7 @@ pub fn collect() -> Result<Report, Error> {
             .map(|(bus, _, path)| (path.to_lowercase(), bus.clone()))
             .collect(),
         recorded_ports: HashSet::new(),
+        read_descriptors: !light,
     };
     let mut buses = Vec::new();
     for (bus, controller, root_path) in roots {
@@ -161,8 +163,10 @@ pub fn collect() -> Result<Report, Error> {
         });
     }
     report.buses = buses;
-    report.displays = crate::windows_display::displays();
-    report.usb4_routers = usb4_routers();
+    if !light {
+        report.displays = crate::windows_display::displays();
+        report.usb4_routers = usb4_routers();
+    }
     report.notes.dedup();
     Ok(report)
 }
@@ -175,6 +179,8 @@ struct Walker<'a> {
     /// Ports déjà comptés, pour ne compter qu'une fois un connecteur dont
     /// les moitiés USB 2 et USB 3 sont sur deux ports (voire deux contrôleurs).
     recorded_ports: HashSet<String>,
+    /// Faux en collecte légère : on évite tout échange avec les appareils.
+    read_descriptors: bool,
 }
 
 impl Walker<'_> {
@@ -294,7 +300,7 @@ impl Walker<'_> {
 
         // Lectures de descripteurs : de vrais échanges USB, uniquement pour
         // un appareil connecté et réveillé (comme USBView).
-        if status == DEVICE_CONNECTED && descriptor_valid && powered {
+        if self.read_descriptors && status == DEVICE_CONNECTED && descriptor_valid && powered {
             if let Some(config) = get_descriptor(hub, port, DESCRIPTOR_CONFIGURATION, 0, 0, 9)
                 && config.len() >= 9
             {

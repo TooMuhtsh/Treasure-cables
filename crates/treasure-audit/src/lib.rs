@@ -3,6 +3,8 @@
 //! Ce crate est volontairement pur (pas d'accès au système) : le même code
 //! tourne dans la version portable et, compilé en WebAssembly, sur le site web.
 
+pub mod cable_test;
+
 use serde::{Deserialize, Serialize};
 use treasure_model::typec::{CableKind, CableSpeed, TypeCPort};
 use treasure_model::{

@@ -72,6 +72,9 @@ pub struct Options {
     /// Inclure les numéros de série (désactivé par défaut : un rapport
     /// est fait pour être partagé).
     pub include_serials: bool,
+    /// Collecte légère pour la surveillance répétée (test de câble) : pas de
+    /// lecture de descripteurs auprès des appareils, seulement l'état des ports.
+    pub light: bool,
 }
 
 #[derive(Debug)]
@@ -98,7 +101,7 @@ impl From<std::io::Error> for Error {
 }
 
 pub fn collect(options: &Options) -> Result<Report, Error> {
-    let mut report = platform_collect()?;
+    let mut report = platform_collect(options)?;
     if !options.include_serials {
         report.redact();
     }
@@ -110,17 +113,17 @@ pub fn collect(options: &Options) -> Result<Report, Error> {
 }
 
 #[cfg(target_os = "linux")]
-fn platform_collect() -> Result<Report, Error> {
+fn platform_collect(_options: &Options) -> Result<Report, Error> {
     linux::collect_from(std::path::Path::new("/sys"))
 }
 
 #[cfg(windows)]
-fn platform_collect() -> Result<Report, Error> {
-    windows::collect()
+fn platform_collect(options: &Options) -> Result<Report, Error> {
+    windows::collect(options.light)
 }
 
 #[cfg(not(any(target_os = "linux", windows)))]
-fn platform_collect() -> Result<Report, Error> {
+fn platform_collect(_options: &Options) -> Result<Report, Error> {
     Err(Error::Unsupported("plateforme non prise en charge"))
 }
 

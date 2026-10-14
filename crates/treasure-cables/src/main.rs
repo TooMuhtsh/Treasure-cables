@@ -78,6 +78,7 @@ fn main() -> ExitCode {
     };
     let options = treasure_collect::Options {
         include_serials: args.include_serials,
+        ..Default::default()
     };
 
     // Sans option, dans une console : menu interactif (cas du double-clic).
