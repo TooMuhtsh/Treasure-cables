@@ -159,6 +159,20 @@ pub enum ConnectionProblem {
     Other,
 }
 
+impl ConnectionProblem {
+    pub fn label(self) -> &'static str {
+        match self {
+            ConnectionProblem::NotEnoughPower => "alimentation insuffisante",
+            ConnectionProblem::NotEnoughBandwidth => "bande passante insuffisante",
+            ConnectionProblem::EnumerationFailed => "échec de la reconnaissance",
+            ConnectionProblem::Overcurrent => "surintensité sur le port",
+            ConnectionProblem::HubNestedTooDeeply => "trop de hubs en cascade",
+            ConnectionProblem::GeneralFailure => "échec de la connexion",
+            ConnectionProblem::Other => "problème signalé par le système",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Lanes {
     pub rx: u8,
@@ -394,6 +408,25 @@ impl PortActivity {
     /// Erreurs qui peuvent venir du câble ou du connecteur.
     pub fn link_errors(&self) -> u32 {
         self.enumeration_errors + self.port_errors + self.transfer_errors + self.hub_resets
+    }
+
+    /// Détail des événements notables, en clair ("2 erreurs de transfert").
+    pub fn breakdown(&self) -> Vec<String> {
+        [
+            (self.enumeration_errors, "erreur(s) de reconnaissance"),
+            (self.port_errors, "erreur(s) de port"),
+            (self.transfer_errors, "erreur(s) de transfert"),
+            (self.hub_resets, "réinitialisation(s) du hub"),
+            (
+                self.descriptor_errors,
+                "descripteur(s) non conforme(s) (défaut de l'appareil, pas du câble)",
+            ),
+            (self.removals, "débranchement(s)"),
+        ]
+        .into_iter()
+        .filter(|(n, _)| *n > 0)
+        .map(|(n, what)| format!("{n} {what}"))
+        .collect()
     }
 }
 

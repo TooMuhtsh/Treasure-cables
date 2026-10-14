@@ -74,7 +74,15 @@ export interface FindingView {
 
 export interface LinkView {
   duration_s: number;
-  ports: { place: string; name: string | null; connections: number; errors: number }[];
+  ports: {
+    place: string;
+    name: string | null;
+    ids: string | null;
+    connections: number;
+    errors: number;
+    detail: string[];
+  }[];
+  controller_errors: number;
 }
 
 export interface Presentation {

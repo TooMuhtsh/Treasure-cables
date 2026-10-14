@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use crate::{Connector, Device, PortInfo, Report, Sourced, Speed};
+use crate::{Bus, Connector, Device, PortInfo, Report, Sourced, Speed};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PlugKind {
@@ -55,6 +55,44 @@ pub struct MachineView<'a> {
     pub plugs: Vec<Plug<'a>>,
     /// Appareils intégrés à la machine (webcam, Bluetooth, lecteur...).
     pub internal: Vec<&'a Device>,
+    /// Ports déclarés accessibles mais qui ne mènent à aucune prise (voir
+    /// [`is_unwired`]) ; écartés des prises.
+    pub unwired: Vec<String>,
+}
+
+/// Port fantôme : déclaré accessible par le micrologiciel, mais seul port
+/// USB 2.0 d'un contrôleur par ailleurs USB 3, sans moitié USB 3 et libre.
+/// C'est la configuration des contrôleurs USB-C intégrés d'Intel : leur
+/// unique port USB 2.0 n'est relié à aucune prise (les fils USB 2.0 des
+/// prises USB-C passent par l'autre contrôleur). Sur un contrôleur USB 2.0
+/// classique, les ports USB 2.0 sont nombreux et la règle ne s'applique pas.
+pub fn is_unwired(report: &Report, bus: &Bus, port: &PortInfo) -> bool {
+    let usb2_only =
+        |p: &PortInfo| p.companion.is_none() && p.max_speed.is_some_and(|s| s.value <= Speed::High);
+    let Some(location) = port.location.as_deref() else {
+        return false;
+    };
+    let accessible = !matches!(
+        port.connector,
+        Some(Connector::Internal | Connector::TypeC) | None
+    );
+    let ports = &bus.root_hub.ports;
+    accessible
+        && usb2_only(port)
+        && ports.iter().filter(|p| usb2_only(p)).count() == 1
+        && ports
+            .iter()
+            .any(|p| p.max_speed.is_some_and(|s| s.value >= Speed::Gen1x1))
+        && !report.buses.iter().any(|b| {
+            b.root_hub.children.iter().any(|d| {
+                d.location == location
+                    || d.port.as_ref().and_then(|p| p.location.as_deref()) == Some(location)
+            }) || b
+                .root_hub
+                .ports
+                .iter()
+                .any(|p| p.companion.as_deref() == Some(location))
+        })
 }
 
 pub fn machine_view(report: &Report) -> MachineView<'_> {
@@ -86,9 +124,14 @@ pub fn machine_view(report: &Report) -> MachineView<'_> {
         };
 
     // Ports des hubs racine : ce sont les prises de la machine.
+    let mut unwired = Vec::new();
     for bus in &report.buses {
         for port in &bus.root_hub.ports {
-            add_port(&mut groups, port);
+            if is_unwired(report, bus, port) {
+                unwired.extend(port.location.clone());
+            } else {
+                add_port(&mut groups, port);
+            }
         }
     }
     // Appareils branchés directement sur la machine.
@@ -110,7 +153,10 @@ pub fn machine_view(report: &Report) -> MachineView<'_> {
         }
     }
 
-    let mut view = MachineView::default();
+    let mut view = MachineView {
+        unwired,
+        ..Default::default()
+    };
     for (ports, devices) in groups {
         let connectors: Vec<Option<Connector>> = ports.iter().map(|p| p.connector).collect();
         let kind = if connectors.contains(&Some(Connector::TypeC)) {
@@ -277,7 +323,6 @@ mod tests {
                     vec!["1-2", "2-6"],
                     vec!["TouchScreen".to_owned()]
                 ),
-                (PlugKind::Other, vec!["1-1"], vec![]),
                 (
                     PlugKind::Other,
                     vec!["2-1", "2-17"],
@@ -288,6 +333,35 @@ mod tests {
         );
         assert_eq!(view.internal.len(), 1);
         assert_eq!(view.internal[0].display_name(), "Webcam");
+        assert_eq!(view.unwired, vec!["1-1"]);
+    }
+
+    /// Une vraie prise USB-A 2.0 sur un contrôleur qui a d'autres ports
+    /// USB 2.0 n'est pas un fantôme.
+    #[test]
+    fn usb2_socket_on_regular_controller_is_kept() {
+        let mut report = laptop();
+        report.buses[1]
+            .root_hub
+            .ports
+            .push(port("2-9", Connector::Unknown, None, Speed::High));
+        let view = machine_view(&report);
+        assert!(view.plugs.iter().any(|p| p.locations() == vec!["2-9"]));
+        assert_eq!(view.unwired, vec!["1-1"]);
+    }
+
+    /// Un appareil branché prouve que le port est câblé.
+    #[test]
+    fn occupied_port_is_never_unwired() {
+        let mut report = laptop();
+        let p = port("1-1", Connector::Unknown, None, Speed::High);
+        report.buses[0]
+            .root_hub
+            .children
+            .push(device("1-1", "Clé", p));
+        let view = machine_view(&report);
+        assert!(view.unwired.is_empty());
+        assert!(view.plugs.iter().any(|p| p.locations() == vec!["1-1"]));
     }
 
     #[test]
@@ -313,7 +387,8 @@ mod tests {
             })
             .unwrap();
         assert_eq!(sandisk.locations(), vec!["2-3", "2-19"]);
-        assert_eq!(view.plugs.len(), 5);
+        assert_eq!(view.plugs.len(), 4);
+        assert_eq!(view.unwired, vec!["1-1"]);
         assert_eq!(view.internal.len(), 2);
     }
 

@@ -42,13 +42,22 @@
           {#each p.link_diagnostics.ports as port, i (i)}
             <tr>
               <td>{port.place}</td>
-              <td>{port.name ?? '—'}</td>
+              <td>
+                {port.name ?? '—'}
+                {#if port.ids && port.name !== port.ids}<span class="ids">{port.ids}</span>{/if}
+                {#if port.detail.length}<span class="detail">{port.detail.join(' · ')}</span>{/if}
+              </td>
               <td>{port.connections}</td>
               <td class:bad={port.errors > 0}>{port.errors}</td>
             </tr>
           {/each}
         </tbody>
       </table>
+    {/if}
+    {#if p.link_diagnostics.controller_errors > 0}
+      <p class="bad">
+        {p.link_diagnostics.controller_errors} erreur(s) ou réinitialisation(s) d'un contrôleur USB pendant l'écoute.
+      </p>
     {/if}
   </section>
 {/if}
@@ -131,9 +140,19 @@
     color: var(--md-sys-color-on-surface-variant);
     font-weight: 500;
   }
-  td.bad {
+  td.bad,
+  p.bad {
     color: var(--md-sys-color-error);
     font-weight: 500;
+  }
+  .ids,
+  .detail {
+    display: block;
+    font-size: 12px;
+    color: var(--md-sys-color-on-surface-variant);
+  }
+  .ids {
+    font-family: ui-monospace, monospace;
   }
   .notes {
     margin-top: 16px;

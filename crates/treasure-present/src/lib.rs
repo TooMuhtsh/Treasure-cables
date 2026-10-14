@@ -7,7 +7,7 @@
 
 use serde::Serialize;
 use treasure_audit::{Confidence, Severity};
-use treasure_model::view::{PlugKind, capability_label, machine_view};
+use treasure_model::view::{PlugKind, capability_label, is_unwired, machine_view};
 use treasure_model::{
     AltModeState, Connector, Device, Display, DpLink, PortInfo, Report, Source, Sourced, Speed,
 };
@@ -165,14 +165,19 @@ pub struct FindingView {
 pub struct LinkView {
     pub duration_s: u32,
     pub ports: Vec<LinkPortView>,
+    /// Réinitialisations ou erreurs internes d'un contrôleur USB.
+    pub controller_errors: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LinkPortView {
     pub place: String,
     pub name: Option<String>,
+    pub ids: Option<String>,
     pub connections: u32,
     pub errors: u32,
+    /// Détail des erreurs et débranchements observés.
+    pub detail: Vec<String>,
 }
 
 pub fn present(report: &Report) -> Presentation {
@@ -251,7 +256,17 @@ pub fn present(report: &Report) -> Presentation {
             ControllerView {
                 id: bus.id.clone(),
                 name: bus.controller.clone(),
-                ports: accessible.into_iter().map(port_summary).collect(),
+                ports: accessible
+                    .into_iter()
+                    .map(|p| {
+                        let summary = port_summary(p);
+                        if is_unwired(report, bus, p) {
+                            format!("{summary} · non câblé")
+                        } else {
+                            summary
+                        }
+                    })
+                    .collect(),
                 internal_ports: internal.len(),
                 devices: bus.root_hub.children.iter().map(device_view).collect(),
             }
@@ -345,12 +360,38 @@ pub fn present(report: &Report) -> Presentation {
                             (Some(v), Some(pid)) => Some(format!("{v:04x}:{pid:04x}")),
                             _ => None,
                         }),
+                    ids: match (p.vendor_id, p.product_id) {
+                        (Some(v), Some(pid)) => Some(format!("{v:04x}:{pid:04x}")),
+                        _ => None,
+                    },
                     connections: p.connections,
                     errors: p.link_errors(),
+                    detail: p.breakdown(),
                 })
                 .collect(),
+            controller_errors: d.controller_errors,
         }),
-        notes: report.notes.clone(),
+        notes: unwired_note(&view.unwired)
+            .into_iter()
+            .chain(report.notes.iter().cloned())
+            .collect(),
+    }
+}
+
+/// Explique pourquoi des ports annoncés par le système ne sont pas montrés.
+pub fn unwired_note(unwired: &[String]) -> Option<String> {
+    match unwired {
+        [] => None,
+        [one] => Some(format!(
+            "Le port {one} n'est pas montré parmi les prises : le système le déclare \
+             accessible, mais c'est le seul port USB 2.0 d'un contrôleur USB 3, \
+             relié à aucune prise sur ce type de machine."
+        )),
+        many => Some(format!(
+            "Les ports {} ne sont pas montrés parmi les prises : le système les déclare \
+             accessibles, mais ils ne sont reliés à aucune prise sur ce type de machine.",
+            many.join(", ")
+        )),
     }
 }
 
@@ -447,7 +488,7 @@ fn facts(device: &Device) -> Vec<Fact> {
     if let Some(problem) = device.problem {
         facts.push(Fact {
             label: "Problème",
-            value: format!("{problem:?}"),
+            value: problem.label().to_owned(),
         });
     }
     for mode in &device.alt_modes {
@@ -553,7 +594,14 @@ mod tests {
         let report: Report = serde_json::from_str(json).unwrap();
         let p = present(&report);
         assert_eq!(p.summary.level, Level::Ok);
-        assert_eq!(p.plugs.len(), 5);
+        assert_eq!(p.plugs.len(), 4);
+        assert!(p.notes[0].starts_with("Le port 1-1 n'est pas montré"));
+        assert!(
+            p.controllers[0]
+                .ports
+                .iter()
+                .any(|s| s.starts_with("1-1") && s.ends_with("non câblé"))
+        );
         assert_eq!(p.plugs[0].kind, "usb_c");
         assert_eq!(p.plugs[0].devices[0].name, "TouchScreen");
         assert_eq!(p.internal.len(), 2);

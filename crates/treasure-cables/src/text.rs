@@ -4,7 +4,7 @@
 use std::fmt::Write;
 
 use treasure_audit::{Confidence, Finding, Severity};
-use treasure_model::view::{PlugKind, capability_label, machine_view};
+use treasure_model::view::{PlugKind, capability_label, is_unwired, machine_view};
 use treasure_model::{Connector, Device, DisplayTransport, PortInfo, Report, Source};
 
 macro_rules! w {
@@ -126,6 +126,10 @@ fn print_plugs(out: &mut String, report: &Report) {
         }
     }
 
+    if let Some(note) = treasure_present::unwired_note(&view.unwired) {
+        w!(out, "  ({note})");
+    }
+
     if !view.internal.is_empty() {
         w!(out, "\nAppareils internes");
         for device in &view.internal {
@@ -194,7 +198,12 @@ fn print_detailed(out: &mut String, report: &Report) {
             .iter()
             .partition(|p| p.connector == Some(Connector::Internal));
         for port in &accessible {
-            w!(out, "  port {}", port_summary(port));
+            let unwired = if is_unwired(report, bus, port) {
+                " · non câblé"
+            } else {
+                ""
+            };
+            w!(out, "  port {}{unwired}", port_summary(port));
         }
         if !internal.is_empty() {
             w!(out, "  + {} port(s) interne(s)", internal.len());
@@ -384,6 +393,17 @@ fn print_link_diagnostics(out: &mut String, report: &Report) {
             out,
             "  {place}{name} : {} branchement(s) reconnu(s), {verdict}",
             port.connections
+        );
+        let detail = port.breakdown();
+        if !detail.is_empty() {
+            w!(out, "    {}", detail.join(" · "));
+        }
+    }
+    if diagnostics.controller_errors > 0 {
+        w!(
+            out,
+            "  {} erreur(s) ou réinitialisation(s) d'un contrôleur USB",
+            diagnostics.controller_errors
         );
     }
 }
