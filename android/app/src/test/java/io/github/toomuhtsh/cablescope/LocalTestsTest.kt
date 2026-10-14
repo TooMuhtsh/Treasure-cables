@@ -56,7 +56,7 @@ class LocalTestsTest {
 
     @Test
     fun fastCharge() {
-        val v = chargeVerdict(measure(2_000_000), emptyList())
+        val v = chargeVerdict(measure(2_000_000), null)
         assertEquals("ok", v.severity)
         assertEquals("Charge rapide", v.title)
         assertEquals(VerdictScore("charge", "Rapide", "good", "2,00 A · ≈ 7,8 W"), v.scores.single())
@@ -66,20 +66,19 @@ class LocalTestsTest {
 
     @Test
     fun comparedWithTheBestCable() {
-        val history = listOf(ChargeResult(0, 2_000_000, 40, "ac"), ChargeResult(1, 1_000_000, 40, "ac"))
-        val v = chargeVerdict(measure(1_200_000), history)
+        val v = chargeVerdict(measure(1_200_000), Comparison(2_000_000, "câble « noir »"))
         assertEquals("Normale", v.scores.single().rating)
-        assertTrue(v.facts.contains("Par rapport au meilleur" to "-40 % (meilleur : 2,00 A)"))
-        assertTrue(v.advice!!.contains("moins vite que votre meilleur"))
+        assertTrue(v.facts.contains("Par rapport au meilleur" to "-40 % (câble « noir » : 2,00 A)"))
+        assertTrue(v.advice!!.contains("moins vite que le meilleur"))
     }
 
     @Test
     fun caveatsComeFirst() {
-        assertTrue(chargeVerdict(measure(800_000, level = 85), emptyList()).advice!!.contains("au-delà de 80 %"))
-        val plain = chargeVerdict(measure(450_000, plugged = "usb"), emptyList())
+        assertTrue(chargeVerdict(measure(800_000, level = 85), null).advice!!.contains("au-delà de 80 %"))
+        val plain = chargeVerdict(measure(450_000, plugged = "usb"), null)
         assertEquals("Lente", plain.scores.single().rating)
         assertTrue(plain.advice!!.contains("prise USB simple"))
-        val cut = chargeVerdict(measure(1_500_000, cuts = 1), emptyList())
+        val cut = chargeVerdict(measure(1_500_000, cuts = 1), null)
         assertEquals("problem", cut.severity)
         assertTrue(cut.advice!!.contains("faux contacts"))
     }
@@ -120,12 +119,5 @@ class LocalTestsTest {
         assertTrue(chargeSettled(flat, 250))
         assertTrue(!chargeSettled(List(8) { 3_000_000L }, 250)) // moins de 5 s
         assertTrue(chargeSettled(List(24) { -100_000L }, 250)) // ne se charge pas
-    }
-
-    @Test
-    fun historyRoundTrip() {
-        val history = listOf(ChargeResult(1, 2_000_000, 40, "ac"), ChargeResult(2, 500_000, null, null))
-        assertEquals(history, historyFromJson(historyToJson(history)))
-        assertEquals(emptyList<ChargeResult>(), historyFromJson("pas du json"))
     }
 }

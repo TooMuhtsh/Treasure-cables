@@ -1,7 +1,5 @@
 package io.github.toomuhtsh.cablescope
 
-import org.json.JSONArray
-import org.json.JSONObject
 import java.util.Locale
 
 // Tests faits par le téléphone seul, sans ordinateur : mesure de la charge
@@ -24,14 +22,6 @@ data class ChargeMeasure(
     val usbData: Boolean,
     /** Coupures de l'alimentation pendant la mesure. */
     val powerCuts: Int,
-)
-
-/** Un test de charge gardé pour comparer les câbles entre eux. */
-data class ChargeResult(
-    val timeMs: Long,
-    val medianUa: Long,
-    val levelPercent: Int?,
-    val plugged: String?,
 )
 
 /** Une zone du câble pendant le test des faux contacts. */
@@ -71,11 +61,11 @@ fun chargeRating(ua: Long): Pair<String, String> = when {
     else -> "Nulle" to "bad"
 }
 
-fun chargeVerdict(m: ChargeMeasure, history: List<ChargeResult>): ProbeEvent.Verdict {
+/** `best` : meilleure charge déjà mesurée sur le même chargeur. */
+fun chargeVerdict(m: ChargeMeasure, best: Comparison?): ProbeEvent.Verdict {
     val (rating, tone) = chargeRating(m.medianUa)
     val full = (m.levelPercent ?: 0) >= 95
     val watts = m.voltageMv?.takeIf { m.medianUa > 0 }?.let { m.medianUa / 1e6 * it / 1000.0 }
-    val best = history.maxByOrNull { it.medianUa }?.takeIf { it.medianUa > 0 }
 
     val scoreValue = if (m.medianUa > 0) {
         listOfNotNull(formatAmps(m.medianUa), watts?.let { "≈ ${formatWatts(it)}" }).joinToString(" · ")
@@ -99,7 +89,7 @@ fun chargeVerdict(m: ChargeMeasure, history: List<ChargeResult>): ProbeEvent.Ver
             add(
                 "Par rapport au meilleur" to when {
                     m.medianUa >= best.medianUa -> "meilleur résultat"
-                    else -> "$diff % (meilleur : ${formatAmps(best.medianUa)})"
+                    else -> "$diff % (${best.label} : ${formatAmps(best.medianUa)})"
                 },
             )
         }
@@ -119,7 +109,7 @@ fun chargeVerdict(m: ChargeMeasure, history: List<ChargeResult>): ProbeEvent.Ver
         m.plugged == "usb" ->
             "Un port d'ordinateur limite la charge : mesurez sur un chargeur pour juger le câble."
         best != null && m.medianUa < best.medianUa * 7 / 10 ->
-            "Ce câble charge nettement moins vite que votre meilleur résultat : avec le même chargeur, c'est le câble qui limite."
+            "Ce câble charge nettement moins vite que le meilleur mesuré sur ce chargeur : c'est lui qui limite."
         else -> null
     }
 
@@ -209,26 +199,3 @@ fun formatAmps(ua: Long): String =
     if (ua >= 1_000_000) String.format(Locale.FRANCE, "%.2f A", ua / 1_000_000.0) else "${ua / 1000} mA"
 
 fun formatWatts(w: Double): String = String.format(Locale.FRANCE, "%.1f W", w)
-
-fun historyToJson(history: List<ChargeResult>): String = JSONArray(
-    history.map {
-        JSONObject()
-            .put("time_ms", it.timeMs)
-            .put("median_ua", it.medianUa)
-            .put("level_percent", it.levelPercent ?: JSONObject.NULL)
-            .put("plugged", it.plugged ?: JSONObject.NULL)
-    },
-).toString()
-
-fun historyFromJson(json: String?): List<ChargeResult> {
-    val array = runCatching { JSONArray(json ?: return emptyList()) }.getOrNull() ?: return emptyList()
-    return (0 until array.length()).mapNotNull { i ->
-        val o = array.optJSONObject(i) ?: return@mapNotNull null
-        ChargeResult(
-            timeMs = o.optLong("time_ms"),
-            medianUa = o.optLong("median_ua"),
-            levelPercent = if (o.isNull("level_percent")) null else o.optInt("level_percent"),
-            plugged = if (o.isNull("plugged")) null else o.optString("plugged"),
-        )
-    }
-}

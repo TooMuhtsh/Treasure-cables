@@ -26,7 +26,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Tab
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
@@ -48,6 +58,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -88,17 +99,31 @@ fun Logo(modifier: Modifier = Modifier) {
 @Composable
 fun ProbeScreen(model: ProbeViewModel = viewModel()) {
     val state by model.state.collectAsStateWithLifecycle()
-    val context = LocalContext.current
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    // Un test qui commence ramène à l'onglet Tester.
+    val running = state.computer != null || state.localTest != null
+    LaunchedEffect(running) { if (running) tab = 0 }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("CableScope Probe") },
-                navigationIcon = { Logo(Modifier.padding(start = 12.dp, end = 4.dp)) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                ),
-            )
+            Column {
+                TopAppBar(
+                    title = { Text("CableScope Probe") },
+                    navigationIcon = { Logo(Modifier.padding(start = 12.dp, end = 4.dp)) },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    ),
+                )
+                PrimaryTabRow(selectedTabIndex = tab, containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+                    listOf(
+                        "Tester",
+                        if (state.history.isEmpty()) "Mesures" else "Mesures (${state.history.size})",
+                        "Batterie",
+                    ).forEachIndexed { i, label ->
+                        Tab(selected = tab == i, onClick = { tab = i }, text = { Text(label) })
+                    }
+                }
+            }
         },
     ) { padding ->
         Column(
@@ -109,28 +134,11 @@ fun ProbeScreen(model: ProbeViewModel = viewModel()) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // Pendant un test sans ordinateur, l'état du branchement est
-            // déjà connu : le test passe en tête de l'écran.
-            if (state.localTest == null) {
-                StatusCard(state, onOpenSettings = { model.openTetherSettings(context) })
+            when (tab) {
+                0 -> TesterTab(state, model, onShowMeasures = { tab = 1 })
+                1 -> MeasuresTab(state.history, model)
+                else -> BatteryTab(state)
             }
-            state.verdict?.let { VerdictCard(it) }
-            if (state.computer == null) {
-                state.localTest?.let { LocalTestCard(it, onCancel = model::cancelLocal) }
-                    ?: LocalTestsCard(state, onCharge = model::startCharge, onContacts = model::startContacts)
-                state.localVerdict?.let { VerdictCard(it, onClose = model::dismissLocal) }
-            }
-            if (state.chargeHistory.isNotEmpty()) {
-                ChargeHistoryCard(state.chargeHistory, onClear = model::clearChargeHistory)
-            }
-            state.battery?.let { BatteryCard(it, computer = state.usbConnected) }
-            Text(
-                "Avec le logiciel CableScope, l'ordinateur fait passer des données par le câble dans les deux sens " +
-                    "et le téléphone rapporte la charge qu'il reçoit. Sans ordinateur, le téléphone mesure seul la " +
-                    "charge et repère les faux contacts.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 
@@ -147,6 +155,96 @@ fun ProbeScreen(model: ProbeViewModel = viewModel()) {
             confirmButton = { Button(onClick = { model.answer(true) }) { Text("Accepter") } },
             dismissButton = { TextButton(onClick = { model.answer(false) }) { Text("Refuser") } },
         )
+    }
+}
+
+@Composable
+private fun TesterTab(state: UiState, model: ProbeViewModel, onShowMeasures: () -> Unit) {
+    val context = LocalContext.current
+    // Pendant un test sans ordinateur, l'état du branchement est déjà connu :
+    // le test passe en tête de l'écran.
+    if (state.localTest == null) {
+        StatusCard(state, onOpenSettings = { model.openTetherSettings(context) })
+    }
+    state.verdict?.let { VerdictCard(it) }
+    if (state.localTest == null) NamesCard(state, onChange = model::setNames)
+    if (state.computer == null) {
+        state.localTest?.let { LocalTestCard(it, onCancel = model::cancelLocal) }
+            ?: LocalTestsCard(state, onCharge = model::startCharge, onContacts = model::startContacts)
+        state.localVerdict?.let {
+            VerdictCard(it, onClose = model::dismissLocal)
+            TextButton(onClick = onShowMeasures, contentPadding = PaddingValues(0.dp)) {
+                Text("Gardé dans l'onglet Mesures")
+            }
+        }
+    }
+    Text(
+        "Avec le logiciel CableScope, l'ordinateur fait passer des données par le câble dans les deux sens " +
+            "et le téléphone rapporte la charge qu'il reçoit. Sans ordinateur, le téléphone mesure seul la " +
+            "charge et repère les faux contacts.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/** Noms du chargeur et du câble testés, repris par chaque mesure. */
+@Composable
+private fun NamesCard(state: UiState, onChange: (String, String) -> Unit) {
+    val chargers = remember(state.history) { usedNames(state.history.map { it.charger }) }
+    val cables = remember(state.history) { usedNames(state.history.map { it.cable }) }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Title("Ce que vous testez")
+            Text(
+                "Facultatif : les mesures sont rangées sous ces noms, et les câbles comparés sur un même chargeur.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            NameField(
+                label = "Chargeur ou source",
+                placeholder = "chargeur chambre, batterie portable…",
+                value = state.charger,
+                suggestions = chargers,
+                onValueChange = { onChange(it, state.cable) },
+            )
+            NameField(
+                label = "Câble",
+                placeholder = "noir 2 m, câble du bureau…",
+                value = state.cable,
+                suggestions = cables,
+                onValueChange = { onChange(state.charger, it) },
+            )
+        }
+    }
+}
+
+@Composable
+internal fun NameField(
+    label: String,
+    placeholder: String,
+    value: String,
+    suggestions: List<String>,
+    onValueChange: (String) -> Unit,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        placeholder = { Text(placeholder) },
+        singleLine = true,
+        trailingIcon = if (value.isNotEmpty()) {
+            { TextButton(onClick = { onValueChange("") }) { Text("Effacer") } }
+        } else {
+            null
+        },
+        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+        modifier = Modifier.fillMaxWidth(),
+    )
+    val others = suggestions.filterNot { it.equals(value.trim(), ignoreCase = true) }.take(6)
+    if (others.isNotEmpty()) {
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            others.forEach { SuggestionChip(onClick = { onValueChange(it) }, label = { Text(it) }) }
+        }
     }
 }
 
@@ -281,34 +379,13 @@ private fun LocalTestCard(test: LocalTest, onCancel: () -> Unit) {
 }
 
 @Composable
-private fun ChargeHistoryCard(history: List<ChargeResult>, onClear: () -> Unit) {
-    val best = history.maxOf { it.medianUa }
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Title("Charges mesurées")
-            history.withIndex().reversed().forEach { (i, r) ->
-                val details = listOfNotNull(
-                    r.levelPercent?.let { "batterie $it %" },
-                    sourceLabel(r.plugged, false).takeIf { r.plugged != null },
-                ).joinToString(" · ")
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Mesure ${i + 1}${if (r.medianUa == best) " · la meilleure" else ""}")
-                        if (details.isNotEmpty()) {
-                            Text(details, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    Text(formatAmps(r.medianUa), fontWeight = FontWeight.Medium)
-                }
-            }
-            TextButton(onClick = onClear, contentPadding = PaddingValues(0.dp)) { Text("Effacer") }
-        }
-    }
-}
-
-@Composable
-private fun VerdictCard(verdict: ProbeEvent.Verdict, onClose: (() -> Unit)? = null) {
-    var details by rememberSaveable(verdict) { mutableStateOf(false) }
+internal fun VerdictCard(
+    verdict: ProbeEvent.Verdict,
+    onClose: (() -> Unit)? = null,
+    /** Détails dépliés d'emblée (fiche d'une mesure). */
+    expanded: Boolean = false,
+) {
+    var details by rememberSaveable(verdict) { mutableStateOf(expanded) }
     val title = when (verdict.severity) {
         "ok" -> MaterialTheme.colorScheme.primary
         "warning" -> verdictColors("warning").onContainer
@@ -338,7 +415,7 @@ private fun VerdictCard(verdict: ProbeEvent.Verdict, onClose: (() -> Unit)? = nu
 }
 
 @Composable
-private fun ScoreRow(score: VerdictScore) {
+internal fun ScoreRow(score: VerdictScore) {
     val colors = toneColors(score.tone)
     val criterion = when (score.criterion) {
         "transfer" -> "Transfert"
@@ -366,7 +443,7 @@ private fun ScoreRow(score: VerdictScore) {
 }
 
 @Composable
-private fun BatteryCard(battery: BatteryReading, computer: Boolean) {
+internal fun BatteryCard(battery: BatteryReading, computer: Boolean) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Title("Charge")
@@ -382,14 +459,14 @@ private fun BatteryCard(battery: BatteryReading, computer: Boolean) {
 }
 
 @Composable
-private fun Title(text: String) {
+internal fun Title(text: String) {
     Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
 }
 
 @Composable
-private fun Fact(label: String, value: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+internal fun Fact(label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, color = Color.Unspecified)
+        Text(value, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
     }
 }

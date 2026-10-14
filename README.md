@@ -123,6 +123,11 @@ Sans ordinateur, l'application teste aussi seule, branchée sur un chargeur :
 - **Faux contacts** (30 s) : câble au repos, puis plié près de chaque fiche ; un bip
   signale chaque coupure, le verdict dit de quel côté le câble lâche.
 
+Chaque mesure est gardée dans l'onglet **Mesures**, avec son détail complet. Nommez le
+chargeur (« chargeur chambre », « batterie portable ») et le câble : les câbles mesurés
+sur un même chargeur sont classés, et chaque mesure se compare au meilleur câble de ce
+chargeur. L'onglet **Batterie** donne l'état de la batterie (santé, cycles de charge…).
+
 Pour le compiler :
 
 ```sh

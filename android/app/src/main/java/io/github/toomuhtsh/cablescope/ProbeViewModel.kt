@@ -47,8 +47,23 @@ data class UiState(
     val localTest: LocalTest? = null,
     val localVerdict: ProbeEvent.Verdict? = null,
     val localError: String? = null,
-    /** Mesures de charge gardées pour comparer les câbles. */
-    val chargeHistory: List<ChargeResult> = emptyList(),
+    /** Toutes les mesures, de la plus ancienne à la plus récente. */
+    val history: List<Measurement> = emptyList(),
+    /** Noms du chargeur et du câble testés, repris pour chaque mesure. */
+    val charger: String = "",
+    val cable: String = "",
+    val batteryInfo: BatteryInfo? = null,
+)
+
+/** État de la batterie (onglet Batterie). */
+data class BatteryInfo(
+    val status: String?,
+    val health: String?,
+    val technology: String?,
+    /** Cycles de charge complets (Android 14 et plus). */
+    val cycleCount: Int?,
+    /** Charge restante, en microampères-heures. */
+    val chargeCounterUah: Long?,
 )
 
 enum class LocalKind { Charge, Contacts }
@@ -110,7 +125,15 @@ class ProbeViewModel(application: Application) : AndroidViewModel(application), 
             },
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
-        _state.update { it.copy(chargeHistory = historyFromJson(prefs.getString(HISTORY, null))) }
+        // La première version gardait seulement les charges, sous un autre nom.
+        val saved = prefs.getString(HISTORY, null) ?: prefs.getString(LEGACY_HISTORY, null)
+        _state.update {
+            it.copy(
+                history = measurementsFromJson(saved),
+                charger = prefs.getString(CHARGER, null).orEmpty(),
+                cable = prefs.getString(CABLE, null).orEmpty(),
+            )
+        }
 
         // Hors du fil de l'interface : ouverture des ports du serveur.
         viewModelScope.launch(Dispatchers.IO) {
@@ -138,6 +161,7 @@ class ProbeViewModel(application: Application) : AndroidViewModel(application), 
                 battery = battery(),
                 usbConnected = usbConnected(),
                 interfaces = interfaces.map { (name, ip) -> "$name ${ip.hostAddress}" },
+                batteryInfo = batteryInfo(),
             )
         }
     }
@@ -209,14 +233,10 @@ class ProbeViewModel(application: Application) : AndroidViewModel(application), 
             usbData = usbConnected(),
             powerCuts = w.report().powerCuts,
         )
-        val history = _state.value.chargeHistory
-        val verdict = chargeVerdict(measure, history)
-        if (measure.powerCuts == 0 && measure.medianUa > 0) {
-            val updated = (history + ChargeResult(System.currentTimeMillis(), measure.medianUa, measure.levelPercent, measure.plugged))
-                .takeLast(HISTORY_SIZE)
-            prefs.edit().putString(HISTORY, historyToJson(updated)).apply()
-            _state.update { it.copy(chargeHistory = updated) }
-        }
+        val verdict = chargeVerdict(measure, bestCharge(_state.value.history, names().first))
+        // Une mesure coupée ne sert pas de référence pour comparer.
+        val comparable = measure.medianUa.takeIf { measure.powerCuts == 0 && it > 0 }
+        record(MeasurementKind.Charge, verdict, medianUa = comparable, level = measure.levelPercent)
         verdict
     }
 
@@ -243,7 +263,9 @@ class ProbeViewModel(application: Application) : AndroidViewModel(application), 
             plan.step(instruction, BEND_MS, w)
             ZoneResult(zone, w.report())
         }
-        contactsVerdict(rest, results, plugged, data)
+        contactsVerdict(rest, results, plugged, data).also {
+            record(MeasurementKind.Contacts, it, level = battery().levelPercent)
+        }
     }
 
     fun cancelLocal() {
@@ -254,9 +276,53 @@ class ProbeViewModel(application: Application) : AndroidViewModel(application), 
         _state.update { it.copy(localVerdict = null, localError = null) }
     }
 
-    fun clearChargeHistory() {
-        prefs.edit().remove(HISTORY).apply()
-        _state.update { it.copy(chargeHistory = emptyList()) }
+    // --- Historique ------------------------------------------------------------
+
+    /** Noms du chargeur et du câble pour les prochaines mesures. */
+    fun setNames(charger: String, cable: String) {
+        prefs.edit().putString(CHARGER, charger).putString(CABLE, cable).apply()
+        _state.update { it.copy(charger = charger, cable = cable) }
+    }
+
+    fun rename(timeMs: Long, charger: String, cable: String) = updateHistory { history ->
+        history.map {
+            if (it.timeMs == timeMs) it.copy(charger = charger.trim().ifEmpty { null }, cable = cable.trim().ifEmpty { null }) else it
+        }
+    }
+
+    fun delete(timeMs: Long) = updateHistory { history -> history.filterNot { it.timeMs == timeMs } }
+
+    fun clearHistory() = updateHistory { emptyList() }
+
+    private fun names(): Pair<String?, String?> =
+        _state.value.let { it.charger.trim().ifEmpty { null } to it.cable.trim().ifEmpty { null } }
+
+    private fun record(
+        kind: MeasurementKind,
+        verdict: ProbeEvent.Verdict,
+        medianUa: Long? = null,
+        level: Int? = null,
+        computer: String? = null,
+    ) {
+        val (charger, cable) = names()
+        val measurement = Measurement(
+            timeMs = System.currentTimeMillis(),
+            kind = kind,
+            // Un test avec l'ordinateur ne passe par aucun chargeur.
+            charger = charger.takeIf { kind != MeasurementKind.Computer },
+            cable = cable,
+            computer = computer,
+            medianUa = medianUa,
+            levelPercent = level,
+            verdict = verdict,
+        )
+        updateHistory { (it + measurement).takeLast(HISTORY_SIZE) }
+    }
+
+    private fun updateHistory(change: (List<Measurement>) -> List<Measurement>) {
+        val updated = change(_state.value.history)
+        _state.update { it.copy(history = updated) }
+        prefs.edit().putString(HISTORY, measurementsToJson(updated)).remove(LEGACY_HISTORY).apply()
     }
 
     private fun launchLocal(kind: LocalKind, body: suspend () -> ProbeEvent.Verdict) {
@@ -413,6 +479,10 @@ class ProbeViewModel(application: Application) : AndroidViewModel(application), 
     }
 
     override fun onEvent(event: ProbeEvent) {
+        // Hors de la mise à jour de l'état ci-dessous, qui peut être rejouée.
+        if (event is ProbeEvent.Verdict) {
+            record(MeasurementKind.Computer, event, computer = _state.value.computer, level = battery().levelPercent)
+        }
         _state.update {
             when (event) {
                 is ProbeEvent.Connected -> it.copy(computer = event.computer, verdict = null, status = null)
@@ -436,14 +506,45 @@ class ProbeViewModel(application: Application) : AndroidViewModel(application), 
     private fun usbConnected(): Boolean =
         sticky(USB_STATE)?.getBooleanExtra("connected", false) == true
 
+    private fun batteryInfo(): BatteryInfo? {
+        val intent = sticky(Intent.ACTION_BATTERY_CHANGED) ?: return null
+        val manager = context.getSystemService(BatteryManager::class.java)
+        return BatteryInfo(
+            status = when (intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)) {
+                BatteryManager.BATTERY_STATUS_CHARGING -> "en charge"
+                BatteryManager.BATTERY_STATUS_DISCHARGING -> "se décharge"
+                BatteryManager.BATTERY_STATUS_NOT_CHARGING -> "branchée, ne charge pas"
+                BatteryManager.BATTERY_STATUS_FULL -> "pleine"
+                else -> null
+            },
+            health = when (intent.getIntExtra(BatteryManager.EXTRA_HEALTH, -1)) {
+                BatteryManager.BATTERY_HEALTH_GOOD -> "bonne"
+                BatteryManager.BATTERY_HEALTH_OVERHEAT -> "surchauffe"
+                BatteryManager.BATTERY_HEALTH_DEAD -> "hors d'usage"
+                BatteryManager.BATTERY_HEALTH_OVER_VOLTAGE -> "surtension"
+                BatteryManager.BATTERY_HEALTH_UNSPECIFIED_FAILURE -> "défaillance"
+                BatteryManager.BATTERY_HEALTH_COLD -> "trop froide"
+                else -> null
+            },
+            technology = intent.getStringExtra(BatteryManager.EXTRA_TECHNOLOGY)?.takeIf { it.isNotBlank() },
+            // BatteryManager.EXTRA_CYCLE_COUNT (Android 14) ; absent avant.
+            cycleCount = intent.getIntExtra("android.os.extra.CYCLE_COUNT", -1).takeIf { it >= 0 },
+            chargeCounterUah = manager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
+                ?.takeIf { it > 0 && it != Int.MIN_VALUE }?.toLong(),
+        )
+    }
+
     private fun sticky(action: String): Intent? = runCatching {
         ContextCompat.registerReceiver(context, null, IntentFilter(action), ContextCompat.RECEIVER_NOT_EXPORTED)
     }.getOrNull()
 }
 
 private const val USB_STATE = "android.hardware.usb.action.USB_STATE"
-private const val HISTORY = "charge_history"
-private const val HISTORY_SIZE = 20
+private const val HISTORY = "measurements"
+private const val LEGACY_HISTORY = "charge_history"
+private const val HISTORY_SIZE = 100
+private const val CHARGER = "charger"
+private const val CABLE = "cable"
 private const val SAMPLE_MS = 250L
 private const val CHARGE_SETTLE_MAX_MS = 20_000L
 private const val CHARGE_MEASURE_MS = 20_000L
