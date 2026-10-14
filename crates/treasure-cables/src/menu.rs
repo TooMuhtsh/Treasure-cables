@@ -117,7 +117,9 @@ fn deep_session(options: &Options, before: Option<&Report>) -> io::Result<Option
     };
     clear()?;
     println!("Diagnostic approfondi : écoute de la pile USB\n");
-    println!("  1. Débranchez l'appareil ou le câble à tester.");
+    println!(
+        "  1. Débranchez l'appareil ou le câble à tester (un téléphone : branchez-le simplement)."
+    );
     println!(
         "  2. Rebranchez-le, plusieurs fois si besoin, en laissant quelques secondes entre deux essais."
     );

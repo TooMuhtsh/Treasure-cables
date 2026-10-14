@@ -146,7 +146,7 @@ fn print_link_diagnostics(report: &Report) {
         diagnostics.duration_s
     );
     if diagnostics.ports.is_empty() {
-        println!("  Aucune activité USB observée : rien n'a été branché ou débranché.");
+        println!("  Aucun branchement USB détecté pendant l'écoute.");
     }
     for port in &diagnostics.ports {
         let place = port

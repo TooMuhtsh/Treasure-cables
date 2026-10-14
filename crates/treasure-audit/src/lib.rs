@@ -431,8 +431,25 @@ fn check_link_diagnostics(report: &Report, diagnostics: &LinkDiagnostics, out: &
             detail: "Un appareil ou un câble défaillant peut perturber tout le contrôleur. Si le problème persiste, mettez à jour le BIOS et les pilotes du chipset.".to_owned(),
         });
     }
+    let connections: u32 = diagnostics.ports.iter().map(|p| p.connections).sum();
+    let activity = connections + total_errors + diagnostics.controller_errors;
+    if activity == 0 {
+        // Rien n'a été détecté : si l'utilisateur a branché quelque chose,
+        // les fils de données ne passent pas (câble de charge seule).
+        out.push(Finding {
+            code: "no_usb_activity",
+            severity: Severity::Warning,
+            confidence: Confidence::Possible,
+            subject: "diagnostic approfondi".to_owned(),
+            title: format!(
+                "Aucun branchement USB détecté pendant {} s d'écoute",
+                diagnostics.duration_s
+            ),
+            detail: "Si vous avez branché un appareil pendant l'écoute, le câble ne transporte probablement pas les données : c'est un câble de charge seule (très courant), ou ses fils de données sont coupés. Un téléphone se signale au PC dès son branchement, même verrouillé ou en mode « charge uniquement ». Vérifiez avec un autre câble.".to_owned(),
+        });
+        return;
+    }
     if total_errors == 0 && diagnostics.controller_errors == 0 {
-        let connections: u32 = diagnostics.ports.iter().map(|p| p.connections).sum();
         out.push(Finding {
             code: "link_clean",
             severity: Severity::Info,
@@ -679,6 +696,16 @@ mod tests {
         let codes: Vec<_> = audit(&report).iter().map(|f| f.code).collect();
         assert!(codes.contains(&"link_clean"));
         assert!(!codes.contains(&"link_errors"));
+
+        // Écoute vide : ne pas conclure que tout va bien.
+        report.link_diagnostics = Some(LinkDiagnostics {
+            duration_s: 20,
+            ports: vec![],
+            controller_errors: 0,
+        });
+        let codes: Vec<_> = audit(&report).iter().map(|f| f.code).collect();
+        assert!(codes.contains(&"no_usb_activity"));
+        assert!(!codes.contains(&"link_clean"));
     }
 
     #[test]
