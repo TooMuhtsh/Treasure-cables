@@ -14,6 +14,7 @@ Options :
   --json             Écrit le rapport JSON (à partager ou à ouvrir sur le site)
   --input <fichier>  Audite un rapport JSON existant au lieu de la machine
   --include-serials  Inclut les numéros de série (exclus par défaut)
+  -V, --version      Affiche la version
   -h, --help         Affiche cette aide";
 
 struct Args {
@@ -34,6 +35,14 @@ fn parse_args() -> Result<Args, String> {
             "--json" => args.json = true,
             "--include-serials" => args.include_serials = true,
             "--input" => args.input = Some(it.next().ok_or("--input attend un fichier")?),
+            "-V" | "--version" => {
+                println!(
+                    "treasure-cables {} ({})",
+                    env!("CARGO_PKG_VERSION"),
+                    env!("TREASURE_BUILD")
+                );
+                std::process::exit(0);
+            }
             "-h" | "--help" => {
                 println!("{USAGE}");
                 std::process::exit(0);
@@ -106,6 +115,11 @@ fn pause_if_double_clicked() {
 }
 
 fn print_tree(report: &Report) {
+    println!(
+        "Treasure Cables {} ({})\n",
+        env!("CARGO_PKG_VERSION"),
+        env!("TREASURE_BUILD")
+    );
     println!(
         "Appareils USB ({})",
         report.host.os_version.as_deref().unwrap_or(&report.host.os)
