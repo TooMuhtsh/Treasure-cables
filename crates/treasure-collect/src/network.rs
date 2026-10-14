@@ -11,6 +11,8 @@ pub struct Adapter {
     /// Description du pilote ("Remote NDIS based Internet Sharing Device").
     pub description: String,
     pub up: bool,
+    /// État de la liaison en clair ("active", "câble réseau déconnecté"…).
+    pub status: &'static str,
     /// Adresses IPv4 de la carte.
     pub addresses: Vec<Ipv4Addr>,
     pub gateways: Vec<Ipv4Addr>,
@@ -84,7 +86,7 @@ impl Adapter {
     /// Résumé pour le diagnostic : « Ethernet 3 (Remote NDIS…) : active,
     /// 10.16.21.20, passerelle 10.16.21.154 ».
     pub fn summary(&self) -> String {
-        let mut parts = vec![if self.up { "active" } else { "inactive" }.to_owned()];
+        let mut parts = vec![self.status.to_owned()];
         if self.addresses.is_empty() {
             parts.push("sans adresse".to_owned());
         } else {
@@ -189,6 +191,15 @@ pub fn adapters() -> Vec<Adapter> {
             usb_tether: is_usb_tether_description(&description),
             description,
             up: a.OperStatus == IfOperStatusUp,
+            status: match a.OperStatus {
+                1 => "active",
+                2 => "câble réseau déconnecté",
+                3 => "en test",
+                5 => "en attente",
+                6 => "absente",
+                7 => "liaison inférieure coupée",
+                _ => "état inconnu",
+            },
             addresses,
             gateways,
             dhcp_server: ipv4(a.Dhcpv4Server.lpSockaddr).filter(|ip| !ip.is_unspecified()),
@@ -215,6 +226,7 @@ pub fn adapters() -> Vec<Adapter> {
             .unwrap_or_default();
         let up = std::fs::read_to_string(path.join("operstate")).is_ok_and(|s| s.trim() == "up");
         adapters.push(Adapter {
+            status: if up { "active" } else { "inactive" },
             addresses: Vec::new(),
             gateways: linux_gateways(&routes, &name),
             dhcp_server: None,

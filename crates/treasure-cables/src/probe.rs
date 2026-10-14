@@ -319,12 +319,14 @@ fn candidates() -> (Vec<Candidate>, Vec<String>) {
             .collect();
         return (candidates, Vec::new());
     }
-    let mut adapters: Vec<_> = treasure_collect::network::adapters()
-        .into_iter()
-        .filter(|a| a.up)
-        .collect();
-    adapters.sort_by_key(|a| !a.usb_tether);
-    let summaries = adapters.iter().map(|a| a.summary()).collect();
+    let mut all = treasure_collect::network::adapters();
+    all.retain(|a| !a.description.contains("Loopback"));
+    all.sort_by_key(|a| (!a.usb_tether, !a.up));
+    // Toutes les cartes figurent dans le diagnostic, avec leur état.
+    let summaries = all.iter().map(|a| a.summary()).collect();
+    // Les cartes de partage sont essayées quel que soit leur état : une carte
+    // « inconnue » ou « en attente » peut tout de même joindre le téléphone.
+    let adapters: Vec<_> = all.into_iter().filter(|a| a.up || a.usb_tether).collect();
     let mut out: Vec<Candidate> = Vec::new();
     for adapter in adapters {
         let label = if adapter.description.is_empty() {
@@ -363,7 +365,9 @@ fn search_detail(seen: &[(&Candidate, std::io::ErrorKind)], adapters: &[String])
             let label = &candidate.label;
             let ip = candidate.address.ip();
             if ip.is_unspecified() {
-                format!("Partage USB vu (« {label} »), mais l'adresse du téléphone est inconnue.")
+                format!(
+                    "Carte du partage USB vue (« {label} »), mais sans adresse du téléphone (voir son état ci-dessous)."
+                )
             } else if *error == std::io::ErrorKind::ConnectionRefused {
                 format!(
                     "Partage USB vu (« {label} », téléphone en {ip}), mais l'application ne répond pas : affiche-t-elle « Prêt à tester le câble » ?"
@@ -378,7 +382,7 @@ fn search_detail(seen: &[(&Candidate, std::io::ErrorKind)], adapters: &[String])
     if adapters.is_empty() {
         head
     } else {
-        format!("{head} Cartes réseau actives : {}.", adapters.join(" ; "))
+        format!("{head} Cartes réseau : {}.", adapters.join(" ; "))
     }
 }
 
@@ -407,7 +411,7 @@ fn no_tether_adapter(functions: &[treasure_collect::network::UsbNetFunction]) ->
             "Le téléphone propose son partage de connexion (« {name} », {kind}), mais Windows le signale en erreur (code {problem}) dans le Gestionnaire de périphériques : désactivé ou mal installé."
         ),
         (None, Some(driver)) => format!(
-            "Le téléphone propose son partage de connexion (« {name} », pilote {driver}), mais aucune carte réseau active n'en résulte : vérifiez qu'elle n'est pas désactivée dans les connexions réseau de Windows."
+            "Le téléphone propose son partage de connexion (« {name} », pilote {driver}), mais aucune carte réseau de partage n'en résulte (voir les cartes ci-dessous) : dans les connexions réseau de Windows (ncpa.cpl), la carte « Remote NDIS » est-elle désactivée ?"
         ),
     }
 }
