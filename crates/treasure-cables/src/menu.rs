@@ -35,7 +35,7 @@ fn menu(detailed: bool) -> String {
 pub fn run(options: &Options, start_deep: bool) -> io::Result<()> {
     let mut report = analyse(options)?;
     let mut detailed = false;
-    if start_deep && let Some(r) = deep_session(options)? {
+    if start_deep && let Some(r) = deep_session(options, report.as_ref().ok())? {
         report = Ok(r);
     }
     loop {
@@ -57,7 +57,7 @@ pub fn run(options: &Options, start_deep: bool) -> io::Result<()> {
                     break;
                 }
                 Action::Deep => {
-                    if let Some(r) = deep_session(options)? {
+                    if let Some(r) = deep_session(options, report.as_ref().ok())? {
                         report = Ok(r);
                         break;
                     }
@@ -88,7 +88,9 @@ fn analyse(options: &Options) -> io::Result<Result<Report, String>> {
 
 /// Écoute de la pile USB pendant que l'utilisateur branche et débranche.
 /// Renvoie un nouveau rapport qui inclut le bilan, ou rien si annulé.
-fn deep_session(options: &Options) -> io::Result<Option<Report>> {
+/// `before` : l'analyse affichée avant l'écoute, qui permet de nommer un
+/// appareil débranché pendant l'écoute.
+fn deep_session(options: &Options, before: Option<&Report>) -> io::Result<Option<Report>> {
     if cfg!(windows) && !treasure_collect::is_elevated() {
         println!(
             "\nLe diagnostic approfondi écoute la pile USB de Windows pendant que vous branchez \
@@ -153,6 +155,20 @@ fn deep_session(options: &Options) -> io::Result<Option<Report>> {
             return Ok(None);
         }
     };
+    let mut diagnostics = diagnostics;
+    for port in &mut diagnostics.ports {
+        let Some(location) = port.location.as_deref() else {
+            continue;
+        };
+        if port.vendor_id.is_some() || report.devices().any(|d| d.location == location) {
+            continue;
+        }
+        if let Some(device) = before.and_then(|b| b.devices().find(|d| d.location == location)) {
+            port.vendor_id = device.vendor_id;
+            port.product_id = device.product_id;
+            port.device_name = Some(device.display_name());
+        }
+    }
     report.link_diagnostics = Some(diagnostics);
     Ok(Some(report))
 }

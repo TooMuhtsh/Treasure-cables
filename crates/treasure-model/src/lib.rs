@@ -375,6 +375,9 @@ pub struct PortActivity {
     pub port: Option<u32>,
     pub vendor_id: Option<u16>,
     pub product_id: Option<u16>,
+    /// Nom de l'appareil vu sur ce port (utile s'il a été débranché depuis).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device_name: Option<String>,
     /// Appareils reconnus avec succès.
     pub connections: u32,
     /// Erreurs pendant la reconnaissance (lecture des descripteurs, adresse...).

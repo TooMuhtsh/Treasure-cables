@@ -159,6 +159,7 @@ fn print_link_diagnostics(report: &Report) {
             .as_deref()
             .and_then(|loc| report.devices().find(|d| d.location == loc))
             .map(|d| d.display_name())
+            .or_else(|| port.device_name.clone())
             .or_else(|| match (port.vendor_id, port.product_id) {
                 (Some(v), Some(p)) => Some(format!("{v:04x}:{p:04x}")),
                 _ => None,
