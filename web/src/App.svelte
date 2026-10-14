@@ -72,6 +72,16 @@
   }
 
   /** Applique une réponse du serveur, et ses éventuels messages. */
+  /**
+   * La fenêtre administrateur a pris le relais : ce processus s'arrête, et
+   * sa fenêtre se ferme d'elle-même pour ne pas laisser de reliquat.
+   */
+  function handOff() {
+    if (handedOff) return;
+    handedOff = true;
+    setTimeout(() => window.close(), 1500);
+  }
+
   /** Le test avec le téléphone vient de s'arrêter sans verdict. */
   function phoneFailed(next: State) {
     return phoneStep === 'running' && !next.probe && next.cable_results.length <= phoneResultsBefore;
@@ -80,7 +90,7 @@
   function apply(next: State) {
     st = next;
     if (next.message?.level === 'elevation') elevationAsked = true;
-    else if (next.message?.level === 'ok' && next.message.text.includes('administrateur')) handedOff = true;
+    else if (next.message?.level === 'ok' && next.message.text.includes('administrateur')) handOff();
     // L'échec du test avec le téléphone s'affiche dans l'assistant, pas en bandeau.
     else if (next.message && !(phoneFailed(next) && next.message.level === 'error'))
       notify(next.message.text, next.message.level === 'error' ? 'error' : 'ok');
@@ -199,7 +209,7 @@
   <main class="handoff">
     <Icon name="admin" size={48} />
     <h1>Treasure Cables continue dans la fenêtre administrateur</h1>
-    <p>Vous pouvez fermer celle-ci.</p>
+    <p>Cette fenêtre se ferme…</p>
   </main>
 {:else}
   <header class="appbar">
