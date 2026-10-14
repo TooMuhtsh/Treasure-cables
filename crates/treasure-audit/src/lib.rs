@@ -265,14 +265,9 @@ fn check_display(display: &Display, out: &mut Vec<Finding>) {
             "L'affichage est dupliqué : Windows applique la même résolution à tous les écrans. Choisissez « Étendre » ou « Deuxième écran uniquement » (touches Windows + P) pour retrouver le mode natif. Le câble n'est pas en cause.".to_owned(),
         )
     } else if required <= 4.32 {
-        (
-            Severity::Info,
-            Confidence::Likely,
-            format!(
-                "Le mode natif ne demande qu'environ {gbps} Gb/s, à la portée de n'importe quelle liaison {} : le câble n'est pas en cause. Vérifiez la résolution choisie dans Paramètres > Système > Écran.",
-                connection.label()
-            ),
-        )
+        // N'importe quelle liaison transporte ce mode : c'est un réglage
+        // choisi dans Windows, pas un sujet de câble. On ne dit rien.
+        return;
     } else if required <= 8.64 {
         (
             Severity::Info,
@@ -491,8 +486,8 @@ mod tests {
     }
 
     #[test]
-    fn low_bandwidth_display_mode_does_not_blame_cable() {
-        // Cas réel : écran 1920×1200 affiché en 1920×1080, en DisplayPort.
+    fn low_bandwidth_display_mode_is_silent_unless_mirrored() {
+        // Cas réel : écran 1920×1200 volontairement réglé en 1920×1080.
         let display = Display {
             name: Some("ANMITE".into()),
             connection: Some(DisplayConnection::DisplayPort),
@@ -505,11 +500,8 @@ mod tests {
             mirrored: false,
         };
         let mut report = report_with(Device::default());
-        report.displays.push(display.clone());
-        let findings = audit(&report);
-        assert_eq!(findings[0].severity, Severity::Info);
-        assert!(findings[0].detail.contains("pas en cause"));
-        assert!(findings[0].detail.contains("3,6 Gb/s"));
+        report.displays.push(display);
+        assert!(audit(&report).is_empty());
 
         report.displays[0].mirrored = true;
         let findings = audit(&report);
