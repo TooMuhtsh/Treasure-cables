@@ -291,13 +291,30 @@ impl DpLink {
     }
 }
 
+/// Débit d'un mode vidéo en Gb/s : 8 bits par couleur, temps de suppression
+/// réduits (CVT-RB, environ +8 % de pixels).
+pub fn mode_bandwidth_gbps(width: u32, height: u32, refresh_hz: f64) -> f64 {
+    f64::from(width) * f64::from(height) * refresh_hz * 1.08 * 24.0 / 1e9
+}
+
 impl Display {
     /// Débit approximatif nécessaire au mode natif, en Gb/s (8 bits par
     /// couleur, temps de suppression réduits CVT-RB : environ +8 %).
     pub fn native_bandwidth_gbps(&self) -> Option<f64> {
-        let pixels = f64::from(self.native_width?) * f64::from(self.native_height?);
-        let hz = self.native_refresh_hz.unwrap_or(60.0);
-        Some(pixels * hz * 1.08 * 24.0 / 1e9)
+        Some(mode_bandwidth_gbps(
+            self.native_width?,
+            self.native_height?,
+            self.native_refresh_hz.unwrap_or(60.0),
+        ))
+    }
+
+    /// Débit approximatif nécessaire au mode actuel, en Gb/s.
+    pub fn current_bandwidth_gbps(&self) -> Option<f64> {
+        Some(mode_bandwidth_gbps(
+            self.width?,
+            self.height?,
+            self.refresh_hz.unwrap_or(60.0),
+        ))
     }
 }
 

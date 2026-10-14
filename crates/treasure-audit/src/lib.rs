@@ -636,6 +636,17 @@ mod tests {
         assert_eq!(findings[0].severity, Severity::Warning);
     }
 
+    /// Rapport réel (Windows 11, portable Intel + RTX 3060, écran USB-C
+    /// ANMITE réglé volontairement sous son mode natif, diagnostic approfondi
+    /// sans erreur) : seule la confirmation du lien sain doit ressortir.
+    #[test]
+    fn real_windows_report_has_no_false_positive() {
+        let json = include_str!("../../../examples/rapport-windows-reel.json");
+        let report: Report = serde_json::from_str(json).unwrap();
+        let codes: Vec<_> = audit(&report).iter().map(|f| f.code).collect();
+        assert_eq!(codes, vec!["link_clean"]);
+    }
+
     #[test]
     fn link_diagnostics_findings() {
         let mut report = report_with(ssd(Speed::Gen1x1, None));

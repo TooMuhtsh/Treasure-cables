@@ -172,8 +172,8 @@ fn print_link_diagnostics(report: &Report) {
             format!("{errors} erreur(s) de lien")
         };
         println!(
-            "  {place}{name} : {} reconnaissance(s), {} retrait(s), {verdict}",
-            port.connections, port.removals
+            "  {place}{name} : {} branchement(s) reconnu(s), {verdict}",
+            port.connections
         );
     }
 }
@@ -215,6 +215,13 @@ fn print_displays(report: &Report) {
                     _ => String::new(),
                 };
                 println!("    lien DisplayPort : {}{max}", link.label());
+                if let Some(needed) = d.current_bandwidth_gbps() {
+                    let share = needed / link.capacity_gbps() * 100.0;
+                    println!(
+                        "    mode actuel : environ {} Gb/s, soit {share:.0} % du lien",
+                        format!("{needed:.1}").replace('.', ",")
+                    );
+                }
             }
             if let Some(gpu) = &d.gpu {
                 println!("    carte graphique : {gpu}");

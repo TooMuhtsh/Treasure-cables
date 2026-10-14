@@ -47,7 +47,7 @@ USB ni les vitesses de lien (WebUSB ne le permet pas), d'où ce découpage.
 | Plateforme | Collecte |
 |---|---|
 | Linux | ✅ Arbre USB, vitesses négociées et voies, capacités (BOS, Linux 6.6+), ports compagnons USB 2/3, ports USB-C et e-marker des câbles (`/sys/class/typec`) |
-| Windows | ✅ Testé sur Windows 11 : parcours des hubs sans droits administrateur (vitesse réelle, capacités SuperSpeed(Plus), voies, prises USB-C et leurs deux moitiés, BOS et modes alternatifs, consommation, codes de problème), écrans (liaison, mode natif). 🧪 À valider : lien DisplayPort réel via les pilotes Intel (IGCL) et NVIDIA (NVAPI), diagnostic approfondi (écoute ETW, administrateur). Voir [la recherche](docs/recherche-sources-windows.md). |
+| Windows | ✅ Testé sur Windows 11 (portable Intel + RTX 3060) : parcours des hubs sans droits administrateur (vitesse réelle, capacités SuperSpeed(Plus), voies, prises USB-C et leurs deux moitiés, BOS et modes alternatifs, consommation, codes de problème), écrans (liaison, mode natif, lien DisplayPort réel via NVIDIA NVAPI), diagnostic approfondi (écoute ETW, administrateur). 🧪 À valider : lien DisplayPort via Intel IGCL, USB4. Voir [la recherche](docs/recherche-sources-windows.md). |
 | Web | 🔜 Après la version portable |
 
 ## Utilisation

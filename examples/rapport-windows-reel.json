@@ -1,0 +1,505 @@
+{
+  "schema_version": 1,
+  "tool": {
+    "name": "treasure-cables",
+    "version": "0.1.0"
+  },
+  "host": {
+    "os": "windows",
+    "os_version": "Windows 11 26H2 (build 26300)"
+  },
+  "generated_at": 1791980951,
+  "buses": [
+    {
+      "id": "usb1",
+      "controller": "Contrôleur d’hôte compatible xHCI USB",
+      "root_hub": {
+        "location": "usb1",
+        "vendor_id": null,
+        "product_id": null,
+        "manufacturer": null,
+        "product": "Hub racine",
+        "device_class": null,
+        "usb_version": null,
+        "speed": null,
+        "max_speed": null,
+        "lanes": null,
+        "max_power_ma": null,
+        "is_hub": true,
+        "port": null,
+        "problem": null,
+        "ports": [
+          {
+            "location": "1-1",
+            "number": 1,
+            "connector": "unknown",
+            "max_speed": {
+              "value": "high",
+              "source": "declared"
+            },
+            "companion": null
+          },
+          {
+            "location": "1-2",
+            "number": 2,
+            "connector": "type_c",
+            "max_speed": {
+              "value": "gen1x1",
+              "source": "inferred"
+            },
+            "companion": "2-6"
+          },
+          {
+            "location": "1-3",
+            "number": 3,
+            "connector": "internal",
+            "max_speed": {
+              "value": "gen1x1",
+              "source": "inferred"
+            },
+            "companion": null
+          },
+          {
+            "location": "1-4",
+            "number": 4,
+            "connector": "internal",
+            "max_speed": {
+              "value": "gen1x1",
+              "source": "inferred"
+            },
+            "companion": null
+          },
+          {
+            "location": "1-5",
+            "number": 5,
+            "connector": "internal",
+            "max_speed": {
+              "value": "gen1x1",
+              "source": "inferred"
+            },
+            "companion": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "usb2",
+      "controller": "Contrôleur d’hôte compatible xHCI USB",
+      "root_hub": {
+        "location": "usb2",
+        "vendor_id": null,
+        "product_id": null,
+        "manufacturer": null,
+        "product": "Hub racine",
+        "device_class": null,
+        "usb_version": null,
+        "speed": null,
+        "max_speed": null,
+        "lanes": null,
+        "max_power_ma": null,
+        "is_hub": true,
+        "port": null,
+        "problem": null,
+        "ports": [
+          {
+            "location": "2-1",
+            "number": 1,
+            "connector": "unknown",
+            "max_speed": {
+              "value": "gen1x1",
+              "source": "inferred"
+            },
+            "companion": "2-17"
+          },
+          {
+            "location": "2-2",
+            "number": 2,
+            "connector": "internal",
+            "max_speed": {
+              "value": "high",
+              "source": "declared"
+            },
+            "companion": null
+          },
+          {
+            "location": "2-3",
+            "number": 3,
+            "connector": "unknown",
+            "max_speed": {
+              "value": "gen1x1",
+              "source": "inferred"
+            },
+            "companion": "2-19"
+          },
+          {
+            "location": "2-4",
+            "number": 4,
+            "connector": "unknown",
+            "max_speed": {
+              "value": "gen1x1",
+              "source": "inferred"
+            },
+            "companion": "2-20"
+          },
+          {
+            "location": "2-5",
+            "number": 5,
+            "connector": "internal",
+            "max_speed": {
+              "value": "high",
+              "source": "declared"
+            },
+            "companion": null
+          },
+          {
+            "location": "2-7",
+            "number": 7,
+            "connector": "internal",
+            "max_speed": {
+              "value": "high",
+              "source": "declared"
+            },
+            "companion": null
+          },
+          {
+            "location": "2-8",
+            "number": 8,
+            "connector": "internal",
+            "max_speed": {
+              "value": "high",
+              "source": "declared"
+            },
+            "companion": null
+          },
+          {
+            "location": "2-9",
+            "number": 9,
+            "connector": "internal",
+            "max_speed": {
+              "value": "high",
+              "source": "declared"
+            },
+            "companion": null
+          },
+          {
+            "location": "2-10",
+            "number": 10,
+            "connector": "internal",
+            "max_speed": {
+              "value": "high",
+              "source": "declared"
+            },
+            "companion": null
+          },
+          {
+            "location": "2-11",
+            "number": 11,
+            "connector": "internal",
+            "max_speed": {
+              "value": "high",
+              "source": "declared"
+            },
+            "companion": null
+          },
+          {
+            "location": "2-12",
+            "number": 12,
+            "connector": "internal",
+            "max_speed": {
+              "value": "high",
+              "source": "declared"
+            },
+            "companion": null
+          },
+          {
+            "location": "2-13",
+            "number": 13,
+            "connector": "internal",
+            "max_speed": {
+              "value": "high",
+              "source": "declared"
+            },
+            "companion": null
+          },
+          {
+            "location": "2-14",
+            "number": 14,
+            "connector": "internal",
+            "max_speed": {
+              "value": "high",
+              "source": "declared"
+            },
+            "companion": null
+          },
+          {
+            "location": "2-15",
+            "number": 15,
+            "connector": "internal",
+            "max_speed": {
+              "value": "high",
+              "source": "declared"
+            },
+            "companion": null
+          },
+          {
+            "location": "2-16",
+            "number": 16,
+            "connector": "internal",
+            "max_speed": {
+              "value": "high",
+              "source": "declared"
+            },
+            "companion": null
+          },
+          {
+            "location": "2-18",
+            "number": 18,
+            "connector": "internal",
+            "max_speed": {
+              "value": "gen1x1",
+              "source": "inferred"
+            },
+            "companion": null
+          },
+          {
+            "location": "2-21",
+            "number": 21,
+            "connector": "internal",
+            "max_speed": {
+              "value": "gen1x1",
+              "source": "inferred"
+            },
+            "companion": null
+          },
+          {
+            "location": "2-22",
+            "number": 22,
+            "connector": "internal",
+            "max_speed": {
+              "value": "gen1x1",
+              "source": "inferred"
+            },
+            "companion": null
+          },
+          {
+            "location": "2-23",
+            "number": 23,
+            "connector": "internal",
+            "max_speed": {
+              "value": "gen1x1",
+              "source": "inferred"
+            },
+            "companion": null
+          },
+          {
+            "location": "2-24",
+            "number": 24,
+            "connector": "internal",
+            "max_speed": {
+              "value": "gen1x1",
+              "source": "inferred"
+            },
+            "companion": null
+          }
+        ],
+        "children": [
+          {
+            "location": "2-4",
+            "vendor_id": 1133,
+            "product_id": 50503,
+            "manufacturer": "Logitech",
+            "product": "USB Receiver",
+            "device_class": 0,
+            "usb_version": 512,
+            "speed": {
+              "value": "full",
+              "source": "negotiated"
+            },
+            "max_speed": null,
+            "lanes": null,
+            "max_power_ma": 98,
+            "is_hub": false,
+            "port": {
+              "location": "2-4",
+              "number": 4,
+              "connector": "unknown",
+              "max_speed": {
+                "value": "gen1x1",
+                "source": "inferred"
+              },
+              "companion": "2-20"
+            },
+            "problem": null
+          },
+          {
+            "location": "2-5",
+            "vendor_id": 3141,
+            "product_id": 27152,
+            "manufacturer": null,
+            "product": "Integrated_Webcam_HD",
+            "device_class": 239,
+            "usb_version": 513,
+            "speed": {
+              "value": "high",
+              "source": "negotiated"
+            },
+            "max_speed": null,
+            "lanes": null,
+            "max_power_ma": 500,
+            "is_hub": false,
+            "port": {
+              "location": "2-5",
+              "number": 5,
+              "connector": "internal",
+              "max_speed": {
+                "value": "high",
+                "source": "declared"
+              },
+              "companion": null
+            },
+            "problem": null
+          },
+          {
+            "location": "2-6",
+            "vendor_id": 10176,
+            "product_id": 2137,
+            "manufacturer": "wch.cn",
+            "product": "TouchScreen",
+            "device_class": 0,
+            "usb_version": 272,
+            "speed": {
+              "value": "full",
+              "source": "negotiated"
+            },
+            "max_speed": null,
+            "lanes": null,
+            "max_power_ma": 200,
+            "is_hub": false,
+            "port": {
+              "location": "2-6",
+              "number": 6,
+              "connector": "type_c",
+              "max_speed": {
+                "value": "gen1x1",
+                "source": "inferred"
+              },
+              "companion": "1-2"
+            },
+            "problem": null
+          },
+          {
+            "location": "2-14",
+            "vendor_id": 32903,
+            "product_id": 38,
+            "manufacturer": null,
+            "product": "Intel(R) Wireless Bluetooth(R)",
+            "device_class": 224,
+            "usb_version": 513,
+            "speed": {
+              "value": "full",
+              "source": "negotiated"
+            },
+            "max_speed": null,
+            "lanes": null,
+            "max_power_ma": null,
+            "is_hub": false,
+            "port": {
+              "location": "2-14",
+              "number": 14,
+              "connector": "internal",
+              "max_speed": {
+                "value": "high",
+                "source": "declared"
+              },
+              "companion": null
+            },
+            "problem": null
+          },
+          {
+            "location": "2-19",
+            "vendor_id": 1921,
+            "product_id": 21944,
+            "manufacturer": "USB",
+            "product": "Sandisk 3.2Gen1",
+            "device_class": 0,
+            "usb_version": 800,
+            "speed": {
+              "value": "gen1x1",
+              "source": "negotiated"
+            },
+            "max_speed": {
+              "value": "gen1x1",
+              "source": "declared"
+            },
+            "lanes": null,
+            "max_power_ma": 896,
+            "is_hub": false,
+            "port": {
+              "location": "2-19",
+              "number": 19,
+              "connector": "unknown",
+              "max_speed": {
+                "value": "gen1x1",
+                "source": "inferred"
+              },
+              "companion": "2-3"
+            },
+            "problem": null
+          }
+        ]
+      }
+    }
+  ],
+  "displays": [
+    {
+      "name": null,
+      "connection": "internal",
+      "width": 1920,
+      "height": 1080,
+      "refresh_hz": 165.014,
+      "native_width": 1920,
+      "native_height": 1080,
+      "native_refresh_hz": 165.014,
+      "mirrored": false,
+      "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU"
+    },
+    {
+      "name": "ANMITE",
+      "connection": "display_port",
+      "width": 1920,
+      "height": 1080,
+      "refresh_hz": 60.0,
+      "native_width": 1920,
+      "native_height": 1200,
+      "native_refresh_hz": 59.95,
+      "mirrored": false,
+      "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+      "link": {
+        "lane_rate_mbps": 2700,
+        "lanes": 2,
+        "max_lane_rate_mbps": 2700,
+        "max_lanes": 2,
+        "source": "NVIDIA NVAPI"
+      }
+    }
+  ],
+  "link_diagnostics": {
+    "duration_s": 24,
+    "ports": [
+      {
+        "location": "2-19",
+        "port": 19,
+        "vendor_id": null,
+        "product_id": null,
+        "connections": 2,
+        "enumeration_errors": 0,
+        "descriptor_errors": 0,
+        "port_errors": 0,
+        "transfer_errors": 0,
+        "hub_resets": 0,
+        "removals": 0
+      }
+    ],
+    "controller_errors": 0
+  }
+}

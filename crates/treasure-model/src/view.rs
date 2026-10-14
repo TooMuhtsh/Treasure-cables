@@ -291,6 +291,33 @@ mod tests {
     }
 
     #[test]
+    fn real_windows_report_plugs() {
+        let json = include_str!("../../../examples/rapport-windows-reel.json");
+        let report: Report = serde_json::from_str(json).unwrap();
+        let view = machine_view(&report);
+        let type_c: Vec<_> = view
+            .plugs
+            .iter()
+            .filter(|p| p.kind == PlugKind::TypeC)
+            .collect();
+        assert_eq!(type_c.len(), 1);
+        assert_eq!(type_c[0].locations(), vec!["1-2", "2-6"]);
+        assert_eq!(type_c[0].devices[0].display_name(), "TouchScreen");
+        let sandisk = view
+            .plugs
+            .iter()
+            .find(|p| {
+                p.devices
+                    .iter()
+                    .any(|d| d.display_name() == "Sandisk 3.2Gen1")
+            })
+            .unwrap();
+        assert_eq!(sandisk.locations(), vec!["2-3", "2-19"]);
+        assert_eq!(view.plugs.len(), 5);
+        assert_eq!(view.internal.len(), 2);
+    }
+
+    #[test]
     fn capability_of_usb3_port_is_a_lower_bound() {
         assert_eq!(
             capability_label(Sourced::inferred(Speed::Gen1x1)),
