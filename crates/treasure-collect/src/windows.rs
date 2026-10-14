@@ -17,7 +17,7 @@
 //!
 //! Voir docs/recherche-sources-windows.md.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
 use std::mem::{offset_of, size_of};
 use std::ptr::{null, null_mut};
@@ -112,6 +112,7 @@ pub fn collect() -> Result<Report, Error> {
     if controllers.is_empty() {
         report.notes.push("Aucun contrôleur USB trouvé.".to_owned());
     }
+    let mut roots = Vec::new();
     for (i, path) in controllers.iter().enumerate() {
         let bus = (i + 1).to_string();
         let controller =
@@ -130,12 +131,22 @@ pub fn collect() -> Result<Report, Error> {
             ));
             continue;
         };
-        let mut walker = Walker {
-            devnodes: &devnodes,
-            notes: &mut report.notes,
-        };
-        let (ports, children) = walker.hub_ports(&device_path(&root_name), &bus);
-        report.buses.push(Bus {
+        roots.push((bus, controller, device_path(&root_name)));
+    }
+
+    let mut walker = Walker {
+        devnodes: &devnodes,
+        notes: &mut report.notes,
+        hub_locations: roots
+            .iter()
+            .map(|(bus, _, path)| (path.to_lowercase(), bus.clone()))
+            .collect(),
+        recorded_ports: HashSet::new(),
+    };
+    let mut buses = Vec::new();
+    for (bus, controller, root_path) in roots {
+        let (ports, children) = walker.hub_ports(&root_path, &bus);
+        buses.push(Bus {
             id: format!("usb{bus}"),
             controller,
             root_hub: Device {
@@ -148,6 +159,7 @@ pub fn collect() -> Result<Report, Error> {
             },
         });
     }
+    report.buses = buses;
     report.displays = crate::windows_display::displays();
     report.usb4_routers = usb4_routers();
     report.notes.dedup();
@@ -157,6 +169,20 @@ pub fn collect() -> Result<Report, Error> {
 struct Walker<'a> {
     devnodes: &'a DevnodeIndex,
     notes: &'a mut Vec<String>,
+    /// Chemin de hub (minuscules) -> emplacement ("2", "2-3"...).
+    hub_locations: HashMap<String, String>,
+    /// Ports déjà comptés, pour ne compter qu'une fois un connecteur dont
+    /// les moitiés USB 2 et USB 3 sont sur deux ports (voire deux contrôleurs).
+    recorded_ports: HashSet<String>,
+}
+
+/// "2" + port 6 -> "2-6" ; "2-3" + port 1 -> "2-3.1".
+fn child_location(parent: &str, port: u32) -> String {
+    if parent.contains('-') {
+        format!("{parent}.{port}")
+    } else {
+        format!("{parent}-{port}")
+    }
 }
 
 impl Walker<'_> {
@@ -166,26 +192,21 @@ impl Walker<'_> {
             self.notes.push(format!("Hub inaccessible : {hub_path}"));
             return (Vec::new(), Vec::new());
         };
+        self.hub_locations
+            .insert(hub_path.to_lowercase(), location.to_owned());
         let count = port_count(&hub);
         let mut ports = Vec::new();
         let mut devices = Vec::new();
         for port in 1..=count {
-            let child_location = if location.contains('-') {
-                format!("{location}.{port}")
-            } else {
-                format!("{location}-{port}")
-            };
+            let here = child_location(location, port);
             let connector = port_connector(&hub, port);
             // Un connecteur USB 3 apparaît comme deux ports (USB 2 et USB 3) :
-            // on ne compte la paire qu'une fois, sur le premier des deux.
-            let duplicate = connector.as_ref().is_some_and(|c| {
-                u32::from(c.companion_port) < port
-                    && c.companion_port != 0
-                    && c.companion_hub
-                        .as_deref()
-                        .is_some_and(|h| h.eq_ignore_ascii_case(hub_path))
-            });
-            let device = self.port_device(&hub, port, &child_location, connector.as_ref());
+            // on ne compte la paire qu'une fois, sur le premier rencontré.
+            let duplicate = connector
+                .as_ref()
+                .and_then(|c| self.companion_location(c))
+                .is_some_and(|c| self.recorded_ports.contains(&c));
+            let device = self.port_device(&hub, port, &here, connector.as_ref());
             let info = match &device {
                 Some(d) => d.port.clone(),
                 None => Some(self.port_info(
@@ -199,6 +220,7 @@ impl Walker<'_> {
                 && !duplicate
             {
                 ports.push(info);
+                self.recorded_ports.insert(here);
             }
             devices.extend(device);
         }
@@ -330,6 +352,19 @@ impl Walker<'_> {
         Some(device)
     }
 
+    /// Emplacement du port compagnon ("1-2"), si son hub est connu.
+    fn companion_location(&self, connector: &ConnectorInfo) -> Option<String> {
+        if connector.companion_port == 0 {
+            return None;
+        }
+        let hub = connector.companion_hub.as_deref()?.to_lowercase();
+        let location = self.hub_locations.get(&hub)?;
+        Some(child_location(
+            location,
+            u32::from(connector.companion_port),
+        ))
+    }
+
     fn port_info(
         &mut self,
         port: u32,
@@ -344,7 +379,9 @@ impl Walker<'_> {
         if let Some(c) = connector
             && c.companion_port != 0
         {
-            companion = Some(format!("port {}", c.companion_port));
+            companion = self
+                .companion_location(c)
+                .or_else(|| Some(format!("port {}", c.companion_port)));
             if let Some(companion_hub) = c.companion_hub.as_deref().and_then(Handle::open)
                 && let Some(cv2) = connection_info_v2(&companion_hub, u32::from(c.companion_port))
             {
@@ -850,7 +887,8 @@ fn devnode_property(devinst: u32, key: &DEVPROPKEY) -> Option<Vec<u8>> {
 
 fn devnode_string(devinst: u32, key: &DEVPROPKEY) -> Option<String> {
     let text = from_wide_bytes(&devnode_property(devinst, key)?);
-    (!text.is_empty()).then_some(text)
+    let text = text.trim();
+    (!text.is_empty()).then(|| text.to_owned())
 }
 
 fn devnode_problem(devinst: u32) -> Option<u32> {

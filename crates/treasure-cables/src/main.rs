@@ -261,10 +261,15 @@ fn print_device(device: &Device, prefix: &str, last: bool) {
         (Some(v), Some(p)) => format!(" ({v:04x}:{p:04x})"),
         _ => String::new(),
     };
+    let type_c = device
+        .port
+        .as_ref()
+        .is_some_and(|p| p.connector == Some(Connector::TypeC));
     println!(
-        "{prefix}{branch}{} {}{ids} : {}",
+        "{prefix}{branch}{} {}{ids}{} : {}",
         device.location,
         device.display_name(),
+        if type_c { " [USB-C]" } else { "" },
         speed_text(device.speed, device.max_speed)
     );
     let child_prefix = format!("{prefix}{}", if last { "   " } else { "│  " });
