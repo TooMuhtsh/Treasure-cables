@@ -17,14 +17,8 @@ use treasure_audit::cable_test::{self, CableVerdict};
 use treasure_collect::{DeepCapture, Options};
 use treasure_model::Report;
 
+use crate::session::{self, CableWatch, DEEP_TIMEOUT};
 use crate::{export, text};
-
-/// Durée maximale de surveillance pendant un test de câble.
-const CABLE_TIMEOUT: Duration = Duration::from_secs(20);
-/// Délai laissé à l'appareil pour finir de se présenter une fois apparu.
-const CABLE_SETTLE: Duration = Duration::from_secs(3);
-/// Arrêt automatique du diagnostic approfondi.
-const DEEP_TIMEOUT: Duration = Duration::from_secs(120);
 
 const TABS: [&str; 4] = ["Prises", "Détails", "Écrans", "Diagnostic"];
 
@@ -45,17 +39,8 @@ enum Screen {
 
 enum CableStep {
     Unplug,
-    Watching(Box<Watch>),
+    Watching(Box<CableWatch>),
     Verdict,
-}
-
-struct Watch {
-    baseline: Report,
-    started: Instant,
-    last_poll: Instant,
-    seen: Option<Instant>,
-    detected: Vec<String>,
-    capture: Option<DeepCapture>,
 }
 
 struct DeepRun {
@@ -120,14 +105,6 @@ impl App {
         Ok(())
     }
 
-    fn collect_light(&self) -> Option<Report> {
-        treasure_collect::collect(&Options {
-            light: true,
-            ..self.options.clone()
-        })
-        .ok()
-    }
-
     // -----------------------------------------------------------------------
     // Clavier
 
@@ -162,22 +139,10 @@ impl App {
                 KeyCode::Enter | KeyCode::Char(' ') => {
                     self.busy(terminal, "Relevé de la situation actuelle…")?;
                     self.status = None;
-                    match self.collect_light() {
-                        Some(baseline) => {
-                            let capture = treasure_collect::is_elevated()
-                                .then(treasure_collect::start_deep_capture)
-                                .and_then(Result::ok);
-                            Screen::Cable(CableStep::Watching(Box::new(Watch {
-                                baseline,
-                                started: Instant::now(),
-                                last_poll: Instant::now(),
-                                seen: None,
-                                detected: Vec::new(),
-                                capture,
-                            })))
-                        }
-                        None => {
-                            self.status = Some(("Analyse impossible.".to_owned(), Color::Red));
+                    match CableWatch::start(&self.options) {
+                        Ok(watch) => Screen::Cable(CableStep::Watching(Box::new(watch))),
+                        Err(e) => {
+                            self.status = Some((format!("Analyse impossible : {e}"), Color::Red));
                             Screen::Main
                         }
                     }
@@ -260,28 +225,11 @@ impl App {
 
     fn tick(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
         if let Screen::Cable(CableStep::Watching(watch)) = &mut self.screen {
-            if watch.last_poll.elapsed() >= Duration::from_secs(1) {
-                watch.last_poll = Instant::now();
-                if let Ok(now) = treasure_collect::collect(&Options {
-                    light: true,
-                    ..self.options.clone()
-                }) {
-                    watch.detected = cable_test::new_devices(&watch.baseline, &now)
-                        .iter()
-                        .map(|d| d.display_name())
-                        .collect();
-                    if !watch.detected.is_empty() && watch.seen.is_none() {
-                        watch.seen = Some(Instant::now());
-                    }
-                }
-            }
-            let settled = watch.seen.is_some_and(|t| t.elapsed() >= CABLE_SETTLE);
-            if settled || watch.started.elapsed() >= CABLE_TIMEOUT {
-                let Screen::Cable(CableStep::Watching(watch)) =
+            watch.poll(&self.options);
+            if watch.is_done()
+                && let Screen::Cable(CableStep::Watching(watch)) =
                     std::mem::replace(&mut self.screen, Screen::Main)
-                else {
-                    unreachable!()
-                };
+            {
                 self.screen = self.finish_cable_test(watch, terminal)?;
             }
         }
@@ -296,15 +244,12 @@ impl App {
 
     fn finish_cable_test(
         &mut self,
-        watch: Box<Watch>,
+        watch: Box<CableWatch>,
         terminal: &mut DefaultTerminal,
     ) -> io::Result<Screen> {
         self.busy(terminal, "Analyse du branchement…")?;
-        let link = watch.capture.map(DeepCapture::stop);
-        match treasure_collect::collect(&self.options) {
-            Ok(mut after) => {
-                let verdict = cable_test::evaluate(&watch.baseline, &after, link.as_ref());
-                after.link_diagnostics = link;
+        match watch.finish(&self.options) {
+            Ok((verdict, after)) => {
                 self.report = Ok(after);
                 self.cable_results.push(verdict);
                 self.status = None;
@@ -336,29 +281,9 @@ impl App {
 
     fn finish_deep(&mut self, run: DeepRun, terminal: &mut DefaultTerminal) -> io::Result<()> {
         self.busy(terminal, "Analyse de l'écoute…")?;
-        let mut diagnostics = run.capture.stop();
         let before = self.report.as_ref().ok().cloned();
-        match treasure_collect::collect(&self.options) {
-            Ok(mut report) => {
-                // Un appareil débranché pendant l'écoute garde son nom.
-                for port in &mut diagnostics.ports {
-                    let Some(location) = port.location.as_deref() else {
-                        continue;
-                    };
-                    if port.vendor_id.is_some() || report.devices().any(|d| d.location == location)
-                    {
-                        continue;
-                    }
-                    if let Some(device) = before
-                        .as_ref()
-                        .and_then(|b| b.devices().find(|d| d.location == location))
-                    {
-                        port.vendor_id = device.vendor_id;
-                        port.product_id = device.product_id;
-                        port.device_name = Some(device.display_name());
-                    }
-                }
-                report.link_diagnostics = Some(diagnostics);
+        match session::finish_deep(run.capture, before.as_ref(), &self.options) {
+            Ok(report) => {
                 self.report = Ok(report);
                 self.status = None;
                 self.select_tab(3);
@@ -556,26 +481,24 @@ impl App {
                     "Branchez maintenant l'appareil au PC avec le câble à tester.",
                 ));
                 lines.push(Line::raw(""));
-                let remaining = CABLE_TIMEOUT
-                    .saturating_sub(watch.started.elapsed())
-                    .as_secs();
+                let remaining = watch.remaining_s();
                 lines.push(Line::raw(format!(
                     "⏱ surveillance en cours… ({remaining} s restantes)"
                 )));
-                if watch.detected.is_empty() {
+                if watch.detected().is_empty() {
                     lines.push(Line::styled(
                         "Aucun appareil détecté pour l'instant.",
                         Style::new().fg(Color::DarkGray),
                     ));
                 } else {
                     lines.push(Line::styled(
-                        format!("✔ Détecté : {}", watch.detected.join(", ")),
+                        format!("✔ Détecté : {}", watch.detected().join(", ")),
                         Style::new().fg(Color::Green),
                     ));
                 }
                 lines.push(Line::raw(""));
                 lines.push(Line::styled(
-                    if watch.capture.is_some() {
+                    if watch.listens_link_errors() {
                         "Mode administrateur : les erreurs de lien sont aussi surveillées."
                     } else {
                         "Lancé en administrateur, le test surveillerait aussi les erreurs de lien."

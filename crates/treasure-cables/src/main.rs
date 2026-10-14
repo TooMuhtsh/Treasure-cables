@@ -1,6 +1,7 @@
 //! Version portable de Treasure Cables (ligne de commande).
 
 mod export;
+mod session;
 mod text;
 mod tui;
 
